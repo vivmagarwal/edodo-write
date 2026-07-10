@@ -98,7 +98,7 @@ editor.destroy();
 ## What you get out of the box
 
 - **Type-to-format** — `# ` … `###### `, `- `, `1. `, `[ ] `, `> `, `` ``` ``,
-  `--- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`.
+  `---`, and inline `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`.
 - **Slash menu** — `/` on an empty line (or list item) opens a grouped, filterable
   block picker; multi-word queries like `/heading 1` work.
 - **Floating toolbar** on text selection (Medium-style).
@@ -113,7 +113,10 @@ editor.destroy();
   ⌘/Ctrl+Y), consistent across every operation.
 - **Interactive task lists** — tick a checkbox and the Markdown flips
   `[ ]` → `[x]`.
-- **Images** — via the slash menu (URL + alt popover), stored as `![alt](src)`.
+- **Images** — paste a screenshot, drag-and-drop files, or use `/image`
+  (Upload button or a URL + alt form); hosting is pluggable via `uploadImage`,
+  with a zero-config `data:`-URL fallback, and the value is always just
+  `![alt](url)` — see [Image hosting](IMAGE_HOSTING.md).
 - **A plugin API** — commands, input rules, keymaps, slash/toolbar/block-menu
   items, and paired markdown extensions.
 - **Light & dark** themes via CSS variables.
@@ -124,5 +127,7 @@ editor.destroy();
   event and command; React contract; styling.
 - **[Markdown support & shortcuts](MARKDOWN_AND_SHORTCUTS.md)** — everything you
   can type, the full keyboard table, and the serialised-Markdown flavour.
+- **[Image hosting](IMAGE_HOSTING.md)** — where image bytes go: the
+  `uploadImage` contract, worked hosting configs, the data-URL fallback.
 - **[Plugin guide](PLUGIN_GUIDE.md)** — write your own plugin.
 - **[Architecture](ARCHITECTURE.md)** — how the Markdown round-trip works.

@@ -30,6 +30,9 @@ export { applyCommand, isInlineActive } from "../core/commands.js";
 export { definePlugin } from "../core/plugin.js";
 export { corePreset } from "../core/preset.js";
 export { insertMarkdown } from "../core/clipboard.js";
+export {
+  dataUrlUploader, isImageFile, DATA_URL_MAX_BYTES, DOWNSCALE_MAX_DIMENSION,
+} from "../core/image-upload.js";
 
 export type {
   EditorOptions,
@@ -58,6 +61,8 @@ export type {
   BlockMenuItem,
   MarkdownExtensionSpec,
   SanitizeOptions,
+  ImageUploader,
+  ImageUploadResult,
 } from "../core/types.js";
 export type { ParseOptions } from "../core/parse.js";
 export type { SerializerExtension } from "../core/serialize.js";

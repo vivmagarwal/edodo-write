@@ -15,12 +15,13 @@ A **Notion / Medium**-style editor whose single source of truth is _Markdown_.
 Try it:
 
 - Type \`## \` for a heading, \`- \` for a bullet, \`1. \` for a number, \`[ ] \` for a to-do
-- Type \`> \` for a quote, \`\`\`\` for a code block, \`--- \` for a divider
+- Type \`> \` for a quote, three backticks for an instant code block, \`---\` for an instant divider
 - On an empty line, press \`/\` — the menu has group headers and accepts spaces (\`/heading 1\` works)
 - Select some text for the **floating toolbar**; \`⌘/Ctrl+K\` opens the **link popover** (click any link to edit it)
 - **Hover** a block: drag the \`⣿\` grip to reorder, or **click** it for Turn into, Duplicate, Copy as Markdown, Delete
 - Type \`==text==\` to ==highlight== it, or \`> [!note] \` for a callout — both from \`edodo-write/plugins\`
 - **Paste** Markdown and it renders as blocks; **copy** and you get Markdown back
+- **Paste or drop an image** and it uploads (configurable) or embeds — \`/image\` also offers Upload and URL
 - Click **below the last block** to start a new paragraph; select-all then type replaces the whole document
 - \`⌘/Ctrl+Z\` undo, \`⌘/Ctrl+⇧Z\` redo, \`Tab\`/\`Shift+Tab\` to indent lists
 

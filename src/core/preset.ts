@@ -39,12 +39,30 @@ function openImageForm(ctx: EditorContext): void {
     anchor,
     placement: "below",
     render(el, close) {
+      // Hidden file input backing the "Upload…" action. The editor's
+      // `insertImages` handles placeholders + the configured uploader.
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = "image/*";
+      fileInput.multiple = true;
+      fileInput.style.display = "none";
+      fileInput.setAttribute("data-testid", "ew-image-file");
+      fileInput.addEventListener("change", () => {
+        const files = Array.from(fileInput.files ?? []);
+        const alt = (el.querySelector('input[name="alt"]') as HTMLInputElement | null)?.value.trim();
+        close();
+        if (!files.length) return;
+        ui.restoreSelection();
+        void ctx.editor.insertImages(files, { alt: alt || undefined });
+      });
+
       buildFieldForm(el, {
         fields: [
-          { name: "src", label: "Image URL", placeholder: "https://…/image.png" },
+          { name: "src", label: "Image URL", placeholder: "Paste an image URL…" },
           { name: "alt", label: "Alt text", placeholder: "Describe the image (alt text)" },
         ],
         submitLabel: "Insert image",
+        actions: [{ label: "Upload…", onPick: () => fileInput.click() }],
         onSubmit(values) {
           close();
           if (!values.src) return;
@@ -52,6 +70,7 @@ function openImageForm(ctx: EditorContext): void {
           ctx.exec("image", { src: values.src, alt: values.alt || undefined });
         },
       });
+      el.appendChild(fileInput);
     },
   });
 }
@@ -76,11 +95,12 @@ export function corePreset(): EdodoPlugin {
       { kind: "block", trigger: /^\d+\. $/, apply: "orderedList" },
       { kind: "block", trigger: /^\[[ xX]?\] $/, apply: "taskList" },
       {
-        // Fenced code: the block must be EMPTIED first — toggleCodeBlock
-        // copies the block text into the <code>, and "``` " must not ride in.
-        // The trailing space is REQUIRED (it is the trigger).
+        // Fenced code — INSTANT on the third backtick (Notion parity); the
+        // optional space keeps the old "``` " gesture working. The block must
+        // be EMPTIED first: toggleCodeBlock copies the block text into the
+        // <code>, and the trigger must not ride in.
         kind: "block",
-        trigger: /^``` $/,
+        trigger: /^``` ?$/,
         apply: (ctx, m, block) => {
           ctx.dom.deleteLeadingChars(block, m[0].length);
           ctx.exec("codeBlock");
@@ -88,8 +108,20 @@ export function corePreset(): EdodoPlugin {
         },
       },
       {
-        // Divider: same delete-first ordering — insertDivider removes the
-        // current block only when it is already empty.
+        // Divider — INSTANT on the third dash (Notion parity). Same
+        // delete-first ordering: insertDivider removes the current block only
+        // when it is already empty.
+        kind: "block",
+        trigger: /^-{3}$/,
+        apply: (ctx, m, block) => {
+          ctx.dom.deleteLeadingChars(block, m[0].length);
+          ctx.exec("divider");
+          return true;
+        },
+      },
+      {
+        // Divider, space-triggered variants. "___ " and "*** " are NOT
+        // instant — typing "***bold italic***" must stay possible.
         kind: "block",
         trigger: /^(-{3}|_{3}|\*{3}) $/,
         apply: (ctx, m, block) => {
@@ -114,6 +146,23 @@ export function corePreset(): EdodoPlugin {
       "Mod-Shift-8": "bulletList",
       "Mod-Shift-9": "taskList",
       "Mod-k": (ctx) => openLinkEditor(ctx),
+      // Notion parity: Enter on a paragraph that is exactly "---"/"___"/"***"
+      // converts it to a divider (the space-triggered rule handles "--- ").
+      // Returning false falls through to the structural Enter engine.
+      Enter: (ctx) => {
+        const block = ctx.dom.currentBlock();
+        if (!block || block.tagName !== "P") return false;
+        const text = (block.textContent ?? "")
+          .split(String.fromCharCode(0x200b)).join("")
+          .replace(/ /g, " ")
+          .trim();
+        if (!/^(-{3,}|_{3,}|\*{3,})$/.test(text)) return false;
+        ctx.transact(() => {
+          ctx.dom.deleteLeadingChars(block, (block.textContent ?? "").length);
+          ctx.exec("divider");
+        });
+        return true;
+      },
     },
 
     slashItems: [

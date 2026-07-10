@@ -479,3 +479,18 @@ body.ew-dragging-active { cursor: grabbing !important; user-select: none !import
   color: var(--ew-fg-faint);
   pointer-events: none;
 }
+
+/* Pending image uploads: visible immediately, pulsing until the URL resolves. */
+.ew-content img[data-uploading] {
+  opacity: 0.6;
+  animation: ew-upload-pulse 1.2s ease-in-out infinite;
+  outline: 2px dashed var(--ew-border);
+  outline-offset: 2px;
+  min-width: 60px;
+  min-height: 40px;
+  background: var(--ew-bg-subtle);
+}
+@keyframes ew-upload-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}

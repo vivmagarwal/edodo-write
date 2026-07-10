@@ -62,6 +62,15 @@ export function createTurndownService(extensions: SerializerExtension[] = []): T
   // turndown already unwraps unknown inline tags, this just makes it explicit.
   td.keep(["mark"]);
 
+  // Pending image uploads never reach the Markdown: a save that fires while
+  // an upload is in flight must not persist a blob:/placeholder URL. The
+  // editor swaps in the hosted URL (and drops data-uploading) on completion.
+  td.addRule("skipPendingImages", {
+    filter: (node) =>
+      node.nodeName === "IMG" && (node as HTMLElement).getAttribute("data-uploading") != null,
+    replacement: () => "",
+  });
+
   for (const extend of extensions) extend(td);
 
   return td;

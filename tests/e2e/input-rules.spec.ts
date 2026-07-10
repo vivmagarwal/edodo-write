@@ -42,20 +42,47 @@ test.describe("block input rules", () => {
     await expect(page.locator('.ew-content input[type="checkbox"]')).toBeChecked();
   });
 
-  test('"``` " becomes a code block; typed text stays verbatim', async ({ page }) => {
+  test('"```" becomes a code block INSTANTLY; typed text stays verbatim', async ({ page }) => {
     await openEditor(page);
-    await page.keyboard.type("``` ");
+    await page.keyboard.type("```");
     await page.keyboard.type("const x = 1;");
     expect(await html(page)).toContain("<pre>");
     expect(await markdown(page)).toBe("```\nconst x = 1;\n```");
   });
 
-  test('"--- " becomes a divider', async ({ page }) => {
+  test('"---" becomes a divider INSTANTLY on the third dash', async ({ page }) => {
     await openEditor(page);
-    await page.keyboard.type("--- ");
+    await page.keyboard.type("---");
     expect(await html(page)).toContain("<hr");
     await page.keyboard.type("after");
     expect(await markdown(page)).toBe("---\n\nafter");
+  });
+
+  test('"___ " and "*** " become dividers (space-triggered)', async ({ page }) => {
+    await openEditor(page);
+    await page.keyboard.type("___ ");
+    expect(await html(page)).toContain("<hr");
+    await page.keyboard.type("between");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("*** ");
+    const h = await html(page);
+    expect((h.match(/<hr/g) || []).length).toBe(2);
+  });
+
+  test('"___" + Enter converts to a divider (Enter fallback)', async ({ page }) => {
+    await openEditor(page);
+    await page.keyboard.type("___");
+    await page.keyboard.press("Enter");
+    expect(await html(page)).toContain("<hr");
+    await page.keyboard.type("after");
+    expect(await markdown(page)).toBe("---\n\nafter");
+  });
+
+  test('typing "***bold italic***" is NOT hijacked by the divider rule', async ({ page }) => {
+    await openEditor(page);
+    await page.keyboard.type("***both***");
+    expect(await html(page)).not.toContain("<hr");
+    expect(await markdown(page)).toContain("both");
   });
 });
 
@@ -88,7 +115,7 @@ test.describe("inline input rules", () => {
 
   test("inline rules do not fire inside a code block", async ({ page }) => {
     await openEditor(page);
-    await page.keyboard.type("``` ");
+    await page.keyboard.type("```");
     await page.keyboard.type("not **bold** here");
     expect(await html(page)).not.toContain("<strong>");
     expect(await markdown(page)).toBe("```\nnot **bold** here\n```");

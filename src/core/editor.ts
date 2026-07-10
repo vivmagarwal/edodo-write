@@ -29,6 +29,9 @@ import { SelectionToolbar } from "./toolbar.js";
 import { SlashMenu } from "./slash-menu.js";
 import { BlockHandles } from "./block-handles.js";
 import { handleCopyCut, handlePaste, insertMarkdown, type MarkdownPipeline } from "./clipboard.js";
+import {
+  isImageFile, dataUrlUploader, previewUrl, revokePreviewUrl, defaultAlt,
+} from "./image-upload.js";
 import { normalizeDocument, isEffectivelyEmpty, visibleText } from "./normalize.js";
 import { corePreset } from "./preset.js";
 import { resolvePlugins, guard, type PluginRegistry } from "./plugin.js";
@@ -54,6 +57,7 @@ export class EdodoWrite {
   private opts: Required<Pick<EditorOptions, "placeholder" | "toolbar" | "slashMenu" | "spellcheck" | "readOnly">>;
   private registry: PluginRegistry;
   private pipeline: MarkdownPipeline;
+  private uploader: EditorOptions["uploadImage"];
   private rules: RuleSet;
   private ctx: EditorContext;
   private ui: EditorUIImpl;
@@ -97,7 +101,31 @@ export class EdodoWrite {
   };
   private onPaste = (e: ClipboardEvent) => {
     if (this.opts.readOnly) { e.preventDefault(); return; }
+    // Image files on the clipboard (screenshots, copied images) win over the
+    // text flavors — Notion behavior, and uploading our own copy beats
+    // hotlinking whatever URL rode along in the HTML flavor.
+    const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
+    if (files.length) {
+      e.preventDefault();
+      void this.insertImages(files);
+      return;
+    }
     if (handlePaste(this.content, e, this.pipeline)) this.afterMutation();
+  };
+  private onDragOver = (e: DragEvent) => {
+    if (this.opts.readOnly || !e.dataTransfer) return;
+    if (Array.from(e.dataTransfer.types).includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+  private onDrop = (e: DragEvent) => {
+    if (this.opts.readOnly) return;
+    const files = Array.from(e.dataTransfer?.files ?? []).filter(isImageFile);
+    if (!files.length) return;
+    e.preventDefault();
+    this.placeCaretAtPoint(e.clientX, e.clientY);
+    void this.insertImages(files);
   };
 
   constructor(host: HTMLElement, options: EditorOptions = {}) {
@@ -109,6 +137,7 @@ export class EdodoWrite {
       spellcheck: options.spellcheck ?? true,
       readOnly: options.readOnly ?? false,
     };
+    this.uploader = options.uploadImage;
 
     // Resolve plugins (throws on collisions) and build the instance pipeline.
     this.registry = resolvePlugins([corePreset(), ...(options.plugins ?? [])], options.exclude);
@@ -170,6 +199,8 @@ export class EdodoWrite {
     this.content.addEventListener("copy", this.onCopy);
     this.content.addEventListener("cut", this.onCut);
     this.content.addEventListener("paste", this.onPaste);
+    this.content.addEventListener("dragover", this.onDragOver);
+    this.content.addEventListener("drop", this.onDrop);
     document.addEventListener("selectionchange", this.onSelectionChange);
     this.content.addEventListener("click", this.onClick);
 
@@ -220,6 +251,119 @@ export class EdodoWrite {
     // (Were a void return treated as unhandled, a keybinding would fall
     // through to the browser default and apply the format twice.)
     return result !== false;
+  }
+
+  /**
+   * Insert image files (from paste, drop, or a file picker) at the caret.
+   * Each file shows a pending placeholder immediately, then the configured
+   * `uploadImage` (or the data-URL fallback) resolves its final `src`.
+   * Deleting a placeholder while its upload is in flight cancels that image.
+   * Resolves when every upload has settled. Non-image files are ignored.
+   */
+  async insertImages(files: Iterable<File>, opts: { alt?: string } = {}): Promise<void> {
+    if (this.opts.readOnly || this.destroyed) return;
+    const images = Array.from(files).filter(isImageFile);
+    if (!images.length) return;
+
+    let uploader = this.uploader;
+    if (!uploader) {
+      uploader = (file) => dataUrlUploader(file);
+      if (!this.warnedFallbackUpload) {
+        this.warnedFallbackUpload = true;
+        console.info(
+          "[edodo-write] no uploadImage configured — images are embedded as data: URLs " +
+          "in the Markdown. Fine for small documents; see docs/IMAGE_HOSTING.md for real hosting.",
+        );
+      }
+    }
+
+    // Place every placeholder first (so multiple files land in order), then
+    // let the uploads race.
+    const jobs = images.map((file) => ({ file, placeholder: this.insertPendingImage(file, opts.alt) }));
+    this.afterMutation();
+
+    await Promise.all(jobs.map(async ({ file, placeholder }) => {
+      const preview = placeholder.getAttribute("src");
+      try {
+        const result = await uploader!(file, this);
+        const resolved = typeof result === "string" ? { src: result } : result;
+        if (!resolved?.src) throw new Error("uploadImage resolved without a src");
+        // Placeholder gone = the user deleted it (or undo re-hydrated the
+        // doc) while uploading — treat as cancelled.
+        if (this.destroyed || !placeholder.isConnected) return;
+        placeholder.setAttribute("src", resolved.src);
+        if (resolved.alt) placeholder.setAttribute("alt", resolved.alt);
+        placeholder.removeAttribute("data-uploading");
+      } catch (err) {
+        console.error("[edodo-write] image upload failed:", err);
+        if (!this.destroyed && placeholder.isConnected) {
+          const p = placeholder.closest("p");
+          placeholder.remove();
+          if (p && visibleText(p).trim() === "" && !p.querySelector("img,input")) p.remove();
+          this.ui.notify("Image upload failed");
+        }
+      } finally {
+        revokePreviewUrl(preview);
+        if (!this.destroyed) this.afterMutation();
+      }
+    }));
+  }
+
+  private warnedFallbackUpload = false;
+
+  /** A pending image: rendered immediately, excluded from the Markdown until
+   *  its upload resolves (see the `data-uploading` turndown rule). */
+  private insertPendingImage(file: File, altOverride?: string): HTMLElement {
+    const img = createElement("img", {
+      src: previewUrl(file),
+      alt: altOverride ?? defaultAlt(file),
+      "data-uploading": "",
+    });
+    const p = document.createElement("p");
+    p.appendChild(img);
+    const after = createElement("p", {}, "<br>");
+    const block = currentBlock(this.content) || (this.content.lastElementChild as HTMLElement | null);
+    if (block) {
+      block.after(p);
+      p.after(after);
+      if (
+        block.tagName === "P" &&
+        visibleText(block).trim() === "" &&
+        !block.querySelector("img,input,hr")
+      ) {
+        block.remove();
+      }
+    } else {
+      this.content.append(p, after);
+    }
+    placeCaretAtStart(after);
+    return img;
+  }
+
+  private placeCaretAtPoint(x: number, y: number): void {
+    type CaretDoc = Document & {
+      caretRangeFromPoint?(x: number, y: number): Range | null;
+      caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
+    };
+    const doc = document as CaretDoc;
+    let range: Range | null = null;
+    if (typeof doc.caretRangeFromPoint === "function") {
+      range = doc.caretRangeFromPoint(x, y);
+    } else if (typeof doc.caretPositionFromPoint === "function") {
+      const pos = doc.caretPositionFromPoint(x, y);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    if (range && (this.content.contains(range.startContainer) || range.startContainer === this.content)) {
+      const sel = getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
   }
 
   /** Batch DOM mutations into ONE undo step + ONE change event. Re-entrant. */
@@ -284,6 +428,8 @@ export class EdodoWrite {
     this.content.removeEventListener("copy", this.onCopy);
     this.content.removeEventListener("cut", this.onCut);
     this.content.removeEventListener("paste", this.onPaste);
+    this.content.removeEventListener("dragover", this.onDragOver);
+    this.content.removeEventListener("drop", this.onDrop);
     this.content.removeEventListener("click", this.onClick);
     document.removeEventListener("selectionchange", this.onSelectionChange);
     this.toolbar?.destroy();

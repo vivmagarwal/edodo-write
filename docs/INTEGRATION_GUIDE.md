@@ -43,6 +43,7 @@ editor.destroy();
 | `className` | `string` | — | Extra class(es) on the host. |
 | `ariaLabel` | `string` | — | ARIA label for the editable region. |
 | `onChange` | `(md: string) => void` | — | Convenience `change` listener. |
+| `uploadImage` | `ImageUploader` | data-URL embed | Where pasted / dropped / picked image files go: `(file, editor) => Promise<url \| { src, alt? }>`; the resolved URL is what lands in the Markdown. Omitted, images embed as `data:` URLs. See **[Image hosting](IMAGE_HOSTING.md)**. |
 | `plugins` | `EdodoPlugin[]` | `[]` | Plugins, applied in order after the core preset. Resolved **once at construction** — create a new editor to change the set. Name/command/item-id collisions throw. |
 | `exclude` | `string[]` | `[]` | Core-preset feature keys (command names / item ids) to remove, e.g. `["taskList", "codeBlock"]`. Only affects the core preset, never plugins. |
 
@@ -56,6 +57,7 @@ editor.destroy();
 | `isEmpty()` | `boolean` | No visible text and no image/divider/checkbox/code block. |
 | `focus()` / `blur()` | `void` | Focus control. |
 | `exec(cmd, payload?)` | `boolean` | Run a registered command. `false` when read-only, unregistered (warns), or the command refused. |
+| `insertImages(files, { alt? })` | `Promise<void>` | Insert image files at the caret through `uploadImage` (or the data-URL fallback); pending placeholders stay out of the Markdown until each upload resolves. Resolves when every upload settles; non-image files are ignored. |
 | `transact(fn)` | `T` | Batch DOM mutations into **one** undo step and **one** change event. Re-entrant. |
 | `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z, ⌘/Ctrl+Y). |
 | `setReadOnly(bool)` | `void` | Toggle editing at runtime — works in both directions. |
@@ -312,6 +314,14 @@ On by default whenever the editor is editable:
   rich HTML is sanitised and converted to Markdown, plain text is treated as
   Markdown — then parsed and inserted as real blocks, splitting the current
   block as needed. Pasting a bare URL over a selection turns it into a link.
+- **Images.** Pasting an image file (screenshots included — image files beat
+  text flavours on the same clipboard), dropping files onto the document
+  (inserted at the drop point), and the `/image` popover's **Upload…** button
+  all funnel through `insertImages` and your `uploadImage`. A pending
+  placeholder renders immediately but stays out of `getMarkdown()` until its
+  upload resolves; deleting it mid-upload cancels; a failed upload removes it
+  and shows a toast. Without an uploader, images embed as `data:` URLs (5 MB
+  cap). Details: **[Image hosting](IMAGE_HOSTING.md)**.
 - **Block handles.** Hovering a block shows a left-gutter handle: `+` inserts a
   paragraph below; the `⣿` grip **drags to reorder** (pointer-based, with a
   drop-indicator line and a translucent ghost) and **clicks to open the block

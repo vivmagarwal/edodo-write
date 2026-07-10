@@ -5,8 +5,9 @@ serialised back to GFM Markdown on every change.
 
 ## Type-to-format (input rules)
 
-Type these at the **start of a line** — the trailing space is the trigger, and
-the trigger text is removed as the block transforms:
+Type these at the **start of a line** — the trigger text is removed as the
+block transforms. Most fire on the trailing space; `` ``` `` and `---` convert
+**instantly** on the third character (Notion parity):
 
 | Type | Becomes |
 |---|---|
@@ -16,8 +17,12 @@ the trigger text is removed as the block transforms:
 | `[ ] ` | To-do item (unchecked) |
 | `[x] ` | To-do item (checked) |
 | `> ` | Blockquote |
-| `` ``` `` then space | Code block |
-| `--- `, `___ ` or `*** ` | Divider (horizontal rule) |
+| `` ``` `` | Code block — instant on the third backtick (`` ``` `` + space still works) |
+| `---` | Divider — instant on the third dash |
+| `___ ` or `*** ` | Divider — space-triggered, so `***bold italic***` stays typeable |
+
+Pressing `Enter` on a paragraph that is exactly `---`, `___` or `***` (three
+or more of the same character) also converts it to a divider.
 
 Inline marks fire as you close the delimiter, mid-line:
 
@@ -42,10 +47,11 @@ the block picker. Type to filter (multi-word queries like `/heading 1` work),
 matches closes the menu.
 
 Items are grouped: **Basic blocks** (Text, Heading 1–3, Bulleted list, Numbered
-list, To-do list, Quote, Code, Divider), **Media** (Image — opens a URL + alt
-popover and inserts `![alt](src)`), **Advanced** (Heading 4–6). Plugins add
-their own items (e.g. `callout()` adds Callout and Warning callout under
-Media).
+list, To-do list, Quote, Code, Divider), **Media** (Image — a popover with an
+**Upload…** button that sends files through your `uploadImage`, plus a URL +
+alt form; inserts `![alt](src)` — see [Image hosting](IMAGE_HOSTING.md)),
+**Advanced** (Heading 4–6). Plugins add their own items (e.g. `callout()` adds
+Callout and Warning callout under Media).
 
 ## Floating toolbar
 
@@ -109,6 +115,11 @@ Hover any block for the left-gutter handle:
   inserted as real blocks (headings, lists, quotes…), splitting the current
   block where needed. A single-paragraph paste inserts inline at the caret.
 - **Paste a bare URL over a selection** to link it.
+- **Paste an image file** (a screenshot, a copied image) and it is uploaded via
+  the configured `uploadImage` — or embedded as a `data:` URL — then inserted
+  as `![alt](url)`. Image files win over text flavours on the same clipboard.
+- **Drop image files** from your file manager to insert them at the drop
+  point, through the same upload path. See [Image hosting](IMAGE_HOSTING.md).
 - **Drag** a block by the `⣿` grip to reorder; **click** the grip for the block
   menu.
 

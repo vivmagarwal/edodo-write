@@ -21,6 +21,7 @@ const DOCS = [
   ["ARCHITECTURE.md", "Architecture"],
   ["PLUGIN_GUIDE.md", "Plugin guide"],
   ["INTEGRATION_GUIDE.md", "Embed in your app (API)"],
+  ["IMAGE_HOSTING.md", "Image hosting"],
   ["MARKDOWN_AND_SHORTCUTS.md", "Markdown support & shortcuts"],
   ["NOTION_UX_STUDY.md", "Notion UX study"],
   ["DEVELOPMENT.md", "Development guide"],

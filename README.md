@@ -33,7 +33,10 @@ from the saved value.
   code blocks, dividers, and inline `**bold**` `*italic*` `` `code` ``
   `~~strike~~`.
 - **Slash menu** (Notion-style) — grouped, filterable, works in empty list
-  items, `/heading 1` with spaces works; images via a URL + alt popover.
+  items, `/heading 1` with spaces works.
+- **Images** — paste a screenshot, drop a file, or upload / paste a URL from
+  the `/image` popover; hosting is pluggable (`uploadImage`) with a
+  zero-config data-URL fallback, and the saved Markdown is just `![alt](url)`.
 - **Floating selection toolbar** (Medium-style).
 - **Link popover** — ⌘/Ctrl+K, toolbar, or click a link to edit / open /
   remove; paste a URL over a selection to link it.
@@ -142,6 +145,8 @@ npm run test:e2e  # Playwright (real-browser behaviour)
   events, commands, React contract, theming
 - **[Markdown support & shortcuts](docs/MARKDOWN_AND_SHORTCUTS.md)** — what you
   can type, the full keyboard table, the output flavour
+- **[Image hosting](docs/IMAGE_HOSTING.md)** — the `uploadImage` contract,
+  worked hosting configs, the data-URL fallback
 - **[Plugin guide](docs/PLUGIN_GUIDE.md)** — write a plugin
 - **[Architecture](docs/ARCHITECTURE.md)** — how the round-trip works
 - **[Development guide](docs/DEVELOPMENT.md)** — contributing

@@ -1,8 +1,8 @@
 {
   "name": "edodo-write",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
-  "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar \u2014 framework-agnostic core with an optional React wrapper.",
+  "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
   "license": "MIT",
   "author": "vivmagarwal",
   "homepage": "https://vivmagarwal.github.io/edodo-write/",

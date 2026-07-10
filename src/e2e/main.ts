@@ -8,9 +8,11 @@
  *   ?value=…            initial Markdown
  *   ?plugins=a,b        register first-party plugins (highlight, callout)
  *   ?exclude=a,b        core-preset feature keys to remove
+ *   ?upload=mock|fail   image uploader stub (mock: resolves a CDN-ish URL
+ *                       after 150 ms; fail: rejects). Omitted: data-URL fallback.
  */
 import "../styles.css";
-import { EdodoWrite, type EdodoPlugin } from "../lib/index.js";
+import { EdodoWrite, type EdodoPlugin, type ImageUploader } from "../lib/index.js";
 import { highlight, callout } from "../plugins/index.js";
 
 declare global {
@@ -33,6 +35,20 @@ const plugins = (params.get("plugins") ?? "")
   });
 const exclude = (params.get("exclude") ?? "").split(",").filter(Boolean);
 
+let uploadImage: ImageUploader | undefined;
+const uploadMode = params.get("upload");
+if (uploadMode === "mock") {
+  uploadImage = async (file) => {
+    await new Promise((r) => setTimeout(r, 150));
+    return `https://cdn.example.com/mock/${encodeURIComponent(file.name)}`;
+  };
+} else if (uploadMode === "fail") {
+  uploadImage = async () => {
+    await new Promise((r) => setTimeout(r, 50));
+    throw new Error("mock upload failure");
+  };
+}
+
 const host = document.getElementById("host")!;
 window.EdodoWrite = EdodoWrite;
 window.editor = new EdodoWrite(host, {
@@ -40,4 +56,5 @@ window.editor = new EdodoWrite(host, {
   autofocus: true,
   plugins,
   exclude: exclude.length ? exclude : undefined,
+  uploadImage,
 });

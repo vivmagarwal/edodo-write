@@ -390,6 +390,25 @@ export type BlockKind =
   | "codeBlock"
   | "other";
 
+// ── Image uploads ───────────────────────────────────────────────────────────
+
+/** What an image uploader resolves with: the hosted URL, or `{ src, alt? }`. */
+export type ImageUploadResult = string | { src: string; alt?: string };
+
+/**
+ * Handles an image file arriving via clipboard paste, drag-and-drop, or the
+ * image popover's file picker. Upload the file to wherever your application
+ * stores images and resolve with its public URL — that URL is what lands in
+ * the Markdown (`![alt](src)`). Reject/throw to signal failure (the pending
+ * placeholder is removed and a toast is shown).
+ *
+ * When no uploader is configured the editor falls back to embedding the image
+ * as a `data:` URL — fully self-contained Markdown, at the cost of document
+ * size. See docs/IMAGE_HOSTING.md for wiring real hosting (S3/R2 endpoints,
+ * Supabase, browser-local stores) and the fallback's limits.
+ */
+export type ImageUploader = (file: File, editor: EdodoWrite) => Promise<ImageUploadResult>;
+
 // ── Options ─────────────────────────────────────────────────────────────────
 
 export interface EditorOptions {
@@ -423,6 +442,12 @@ export interface EditorOptions {
    * e.g. `["taskList", "codeBlock"]`.
    */
   exclude?: string[];
+  /**
+   * Store images arriving via paste / drop / the image popover's file picker.
+   * Omitted: images are embedded as `data:` URLs in the Markdown (small docs
+   * only — see docs/IMAGE_HOSTING.md).
+   */
+  uploadImage?: ImageUploader;
 }
 
 export type { SanitizeOptions };

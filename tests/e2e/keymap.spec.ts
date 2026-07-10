@@ -40,7 +40,7 @@ test.describe("Enter", () => {
 
   test("in a code block inserts a newline, not a new block", async ({ page }) => {
     await openEditor(page);
-    await page.keyboard.type("``` ");
+    await page.keyboard.type("```");
     await page.keyboard.type("line1");
     await page.keyboard.press("Enter");
     await page.keyboard.type("line2");
