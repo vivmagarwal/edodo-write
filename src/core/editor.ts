@@ -599,8 +599,11 @@ export class EdodoWrite {
     if (this.opts.readOnly) return;
     // Menu items act on the CARET block — put the caret where the user is
     // pointing before anything runs (the hovered block is not necessarily the
-    // caret block).
-    placeCaretAtStart(block);
+    // caret block). If the caret is ALREADY inside this block, keep it: table
+    // row/column operations depend on the exact cell.
+    const range = getSelection()?.rangeCount ? getSelection()!.getRangeAt(0) : null;
+    const caretInside = !!range && block.contains(range.startContainer);
+    if (!caretInside) placeCaretAtStart(block);
     const items = this.registry.blockMenuItems
       .filter((item) => !item.when || guard("block-menu", `when "${item.id}"`, () => item.when!(this.ctx, block)))
       .map((item) => ({
@@ -609,7 +612,10 @@ export class EdodoWrite {
         group: item.group ?? "Actions",
         danger: item.danger,
         action: () => {
-          placeCaretAtStart(block);
+          // Same rule as at open time: only re-anchor the caret when it is
+          // not already inside the block — table ops depend on the exact cell.
+          const r = getSelection()?.rangeCount ? getSelection()!.getRangeAt(0) : null;
+          if (!r || !block.contains(r.startContainer)) placeCaretAtStart(block);
           this.transact(() =>
             guard("block-menu", `item "${item.id}"`, () => item.run(this.ctx, block)),
           );

@@ -162,9 +162,21 @@ describe("Enter", () => {
     expect(ed.getMarkdown()).toBe("```\ncode\nmore\n```");
   });
 
-  it("on a table escapes to a new paragraph below it", () => {
+  it("in a table cell moves DOWN a row (header → first body cell)", () => {
     const ed = mount("| a | b |\n| --- | --- |\n| 1 | 2 |");
     caretAtEnd(ed.content.querySelector("th")!);
+    expect(press(ed, "Enter")).toBe(true);
+
+    const sel = getSelection()!;
+    const firstTd = ed.content.querySelector("td")!;
+    expect(firstTd.contains(sel.anchorNode) || sel.anchorNode === firstTd).toBe(true);
+    // The table itself was not split or duplicated.
+    expect(ed.content.querySelectorAll("table").length).toBe(1);
+  });
+
+  it("in the LAST row escapes to a new paragraph below the table", () => {
+    const ed = mount("| a | b |\n| --- | --- |\n| 1 | 2 |");
+    caretAtEnd(ed.content.querySelector("td")!); // "1" — last row
     expect(press(ed, "Enter")).toBe(true);
 
     const table = ed.content.querySelector("table")!;
@@ -172,7 +184,6 @@ describe("Enter", () => {
     expect(after?.tagName).toBe("P");
     const sel = getSelection()!;
     expect(after.contains(sel.anchorNode) || sel.anchorNode === after).toBe(true);
-    // The table itself was not split or duplicated.
     expect(ed.content.querySelectorAll("table").length).toBe(1);
     expect(ed.getMarkdown()).toContain("| 1");
   });

@@ -1,11 +1,28 @@
 import { useEffect, useState } from "react";
 import { EdodoWriteEditor } from "../lib/react.js";
-import { highlight, callout } from "../plugins/index.js";
+import { highlight, callout, math, edodoDraw, tags, embeds } from "../plugins/index.js";
+import "katex/dist/katex.min.css";
 import { EXAMPLES } from "./examples.js";
 
 // Plugins are captured when the editor mounts; the editor remounts (via key)
 // on every example switch, so one shared instance list is fine.
-const PLUGINS = [highlight(), callout()];
+const DEMO_TAGS = [
+  { label: "roadmap", href: "https://github.com/vivmagarwal/edodo-write/issues" },
+  { label: "editor", href: "https://github.com/vivmagarwal/edodo-write" },
+  { label: "markdown" },
+  { label: "diagrams", href: "https://github.com/vivmagarwal/edododraw" },
+];
+const PLUGINS = [
+  highlight(),
+  callout(),
+  math(),
+  edodoDraw(),
+  tags({
+    source: (query: string) =>
+      DEMO_TAGS.filter((t) => t.label.startsWith(query.toLowerCase())),
+  }),
+  embeds(),
+];
 
 type Theme = "light" | "dark" | "system";
 

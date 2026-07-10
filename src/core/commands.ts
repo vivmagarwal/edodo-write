@@ -164,6 +164,49 @@ function toggleCodeBlock(root: HTMLElement): void {
   placeCaretAtEnd(code);
 }
 
+/** Insert a GFM-shaped table (thead>th header row + tbody rows) after the
+ *  current block; caret lands in the first header cell. */
+function insertTable(root: HTMLElement, payload?: { rows?: number; cols?: number }): void {
+  const rows = Math.max(1, Math.min(payload?.rows ?? 3, 50));
+  const cols = Math.max(1, Math.min(payload?.cols ?? 3, 12));
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (let c = 0; c < cols; c++) {
+    const th = document.createElement("th");
+    th.appendChild(document.createElement("br"));
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (let r = 0; r < rows - 1; r++) {
+    const tr = document.createElement("tr");
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement("td");
+      td.appendChild(document.createElement("br"));
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  const block = currentBlock(root) || (root.lastElementChild as HTMLElement | null);
+  const after = createElement("p", {}, "<br>");
+  if (block) {
+    block.after(table);
+    table.after(after);
+    if (block.tagName === "P" && (block.textContent ?? "").split(ZWSP).join("").trim() === "" &&
+        !block.querySelector("img,input,hr")) {
+      block.remove();
+    }
+  } else {
+    root.append(table, after);
+  }
+  const firstCell = table.querySelector("th, td") as HTMLElement | null;
+  if (firstCell) placeCaretAtStart(firstCell);
+}
+
 function insertImage(root: HTMLElement, payload: { src: string; alt?: string }): void {
   if (!payload?.src) return;
   const block = currentBlock(root) || (root.lastElementChild as HTMLElement | null);
@@ -338,6 +381,10 @@ export const coreCommands: Record<string, CommandSpec<any>> = {
   },
   divider: { run: (ctx) => insertDivider(ctx.root) },
   image: { run: (ctx, payload: { src: string; alt?: string }) => insertImage(ctx.root, payload) },
+  table: {
+    run: (ctx, payload?: { rows?: number; cols?: number }) => insertTable(ctx.root, payload),
+    isActive: (ctx) => currentBlock(ctx.root)?.tagName === "TABLE",
+  },
 };
 
 // ── Stable functional entry points (public API + tests) ────────────────────

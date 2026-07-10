@@ -25,7 +25,7 @@
 
 import {
   currentBlock, currentListItem, getRange, getSelection, isAtBlockStart,
-  placeCaretAtStart, placeCaretAfter, ensureNotEmpty,
+  placeCaretAtStart, placeCaretAtEnd, placeCaretAfter, ensureNotEmpty,
 } from "./dom.js";
 import { makeTaskItem } from "./commands.js";
 import { guard, matchesKey, type ResolvedKeyBinding } from "./plugin.js";
@@ -98,9 +98,27 @@ function handleEnter(root: HTMLElement): boolean {
     return true;
   }
 
-  // Splitting a <table> would clone the table element itself — corruption.
-  // Until real table editing lands, Enter escapes to a paragraph below.
+  // Table cells: Enter moves DOWN a row (Notion). From the last row it
+  // escapes to a paragraph below — never splits the <table> element.
   if (block.tagName === "TABLE") {
+    const cell = currentTableCell(root);
+    if (cell) {
+      const below = cellBelow(cell);
+      if (below) {
+        placeCaretAtStart(below);
+        return true;
+      }
+    }
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    block.after(p);
+    placeCaretAtStart(p);
+    return true;
+  }
+
+  // Widget figures (diagrams, embeds…) are non-editable islands — Enter
+  // escapes to a paragraph below instead of splitting the element.
+  if (block.tagName === "FIGURE") {
     const p = document.createElement("p");
     p.innerHTML = "<br>";
     block.after(p);
@@ -290,6 +308,7 @@ function mergeWithPrevious(block: HTMLElement): boolean {
   const prev = block.previousElementSibling as HTMLElement | null;
   if (!prev) return false;
   if (prev.tagName === "HR") { prev.remove(); return true; }
+  if (prev.tagName === "FIGURE") { prev.remove(); return true; } // delete the widget (undoable), Notion-style
   if (prev.tagName === "PRE") return false;   // don't fold prose into code
   if (prev.tagName === "TABLE") return true;  // never fold prose into a table (consume, no-op)
 
@@ -308,9 +327,75 @@ function mergeWithPrevious(block: HTMLElement): boolean {
   return true;
 }
 
+// ── Tables (cell navigation + structure helpers) ────────────────────────────
+
+/** The <td>/<th> containing the caret, if any. */
+export function currentTableCell(root: HTMLElement): HTMLElement | null {
+  const range = getRange();
+  if (!range) return null;
+  let node: Node | null = range.startContainer;
+  while (node && node !== root) {
+    if (node.nodeType === 1 && /^(TD|TH)$/.test((node as HTMLElement).tagName)) {
+      return node as HTMLElement;
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+function cellsOf(table: HTMLElement): HTMLElement[] {
+  return Array.from(table.querySelectorAll("td, th"));
+}
+
+function cellBelow(cell: HTMLElement): HTMLElement | null {
+  const row = cell.closest("tr");
+  const table = cell.closest("table");
+  if (!row || !table) return null;
+  const rows = Array.from(table.querySelectorAll("tr"));
+  const rowIndex = rows.indexOf(row as HTMLTableRowElement);
+  const cellIndex = Array.from(row.children).indexOf(cell);
+  const nextRow = rows[rowIndex + 1];
+  return (nextRow?.children[cellIndex] as HTMLElement) ?? null;
+}
+
+/** Append a body row modeled on the table's column count. Returns its first cell. */
+export function appendTableRow(table: HTMLElement): HTMLElement {
+  const body = table.querySelector("tbody") ?? table;
+  const cols = table.querySelector("tr")?.children.length ?? 1;
+  const tr = document.createElement("tr");
+  for (let i = 0; i < cols; i++) {
+    const td = document.createElement("td");
+    td.appendChild(document.createElement("br"));
+    tr.appendChild(td);
+  }
+  body.appendChild(tr);
+  return tr.firstElementChild as HTMLElement;
+}
+
+/** Tab / Shift+Tab inside a table: hop cells; Tab in the LAST cell adds a row. */
+function handleTableTab(root: HTMLElement, shift: boolean): boolean {
+  const cell = currentTableCell(root);
+  if (!cell) return false;
+  const table = cell.closest("table") as HTMLElement;
+  const cells = cellsOf(table);
+  const index = cells.indexOf(cell);
+  if (shift) {
+    if (index <= 0) return true; // consume — never outdent out of a table
+    placeCaretAtEnd(cells[index - 1]);
+    return true;
+  }
+  if (index === cells.length - 1) {
+    placeCaretAtStart(appendTableRow(table));
+    return true;
+  }
+  placeCaretAtStart(cells[index + 1]);
+  return true;
+}
+
 // ── Tab (list indent/outdent) ────────────────────────────────────────────────
 
 function handleTab(root: HTMLElement, shift: boolean): boolean {
+  if (handleTableTab(root, shift)) return true;
   const li = currentListItem(root);
   if (!li) return false;
   const list = li.parentElement as HTMLElement;

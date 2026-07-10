@@ -33,11 +33,28 @@ Inline marks fire as you close the delimiter, mid-line:
 | `` `code` `` | `code` |
 | `~~strike~~` | ~~strike~~ |
 | `==highlight==` | highlighted `<mark>` — via the `highlight()` plugin, not core |
+| `$x^2$` | inline TeX chip — via the `math()` plugin, not core |
 
 Input rules never fire inside code blocks, and never mid-IME-composition
 (CJK/dead-key input is safe). With the `callout()` plugin, typing `[!note] `
 (or `tip`/`important`/`warning`/`caution`) at the start of a quote turns it
 into a callout.
+
+## Plugin-provided syntax (opt-in)
+
+These lines only mean something when the corresponding first-party plugin is
+installed — and every one of them stays valid, lossless Markdown without it.
+Details, options and worked examples:
+[First-party plugins](FIRST_PARTY_PLUGINS.md).
+
+| Syntax | Plugin | Stored as |
+|---|---|---|
+| `==highlight==` | `highlight()` | `==…==` (extension flavour — plain viewers show the markers) |
+| `> [!NOTE]` … `[!CAUTION]` | `callout()` | a GitHub alert — an ordinary blockquote elsewhere |
+| `$x^2$` and `$$…$$` blocks | `math()` | TeX between dollars — GitHub renders both natively |
+| ` ```edd ` / ` ```mermaid ` fences | `edodoDraw()` / `diagrams()` | a plain fenced code block — GitHub renders mermaid natively |
+| `#tag` → suggestion menu | `tags()` | a plain GFM link `[#tag](href)`, or plain text — zero new syntax |
+| a paragraph that is one bare URL | `embeds()` | the bare URL line — a clickable autolink everywhere else |
 
 ## Slash menu
 
@@ -49,9 +66,11 @@ matches closes the menu.
 Items are grouped: **Basic blocks** (Text, Heading 1–3, Bulleted list, Numbered
 list, To-do list, Quote, Code, Divider), **Media** (Image — a popover with an
 **Upload…** button that sends files through your `uploadImage`, plus a URL +
-alt form; inserts `![alt](src)` — see [Image hosting](IMAGE_HOSTING.md)),
-**Advanced** (Heading 4–6). Plugins add their own items (e.g. `callout()` adds
-Callout and Warning callout under Media).
+alt form; inserts `![alt](src)` — see [Image hosting](IMAGE_HOSTING.md); and
+Table — a 3×3 GFM table), **Advanced** (Heading 4–6). Plugins add their own
+items: `callout()` adds Callout and Warning callout under Media, `math()` adds
+Math block under Advanced, and `edodoDraw()` / `diagrams()` add Diagram /
+Mermaid diagram under Media.
 
 ## Floating toolbar
 
@@ -67,6 +86,65 @@ The link popover replaces any prompt-based flow:
 - **Click an existing link** while editing → edit the URL, Open, or Remove.
 - **Paste a URL over selected text** → the selection becomes a link.
 
+## Tables
+
+`/table` inserts a 3×3 GFM table (or run the `table` command with
+`{ rows?, cols? }` — clamped to 50 rows × 12 columns). The caret lands in the
+first header cell; just type. Tables are GFM-shaped by construction: a header
+row (`thead th`) plus body rows.
+
+Keys inside a table:
+
+| Keys | Action |
+|---|---|
+| `Tab` | Next cell; in the **last** cell, append a new row (and move into it) |
+| `Shift + Tab` | Previous cell; in the first cell it is consumed — never escapes the table |
+| `Enter` | The cell below (same column); from the **last row**, escape to a paragraph below the table |
+| `Shift + Enter` | A line break **inside** the cell — stored as a literal `<br>`, the GFM idiom for multi-line cells |
+| `Backspace` | Deletes text only — it never merges cells and never pulls outside content into the table |
+
+Structure editing lives in the block menu — click the `⣿` grip on a table and
+a **Table** group appears with *Add row below*, *Add column right*, *Delete
+row* and *Delete column*, all relative to the **caret's cell** (click a cell
+first). Two rules come from GFM itself:
+
+- **The header row is protected.** GFM tables require one, so *Delete row* on
+  the header refuses with a toast ("Markdown tables need their header row").
+- **There is no header column.** GFM can't represent one, so none is offered.
+
+*Turn into* entries are hidden for tables (moving cell contents into a heading
+would destroy the grid); *Duplicate*, *Copy as Markdown* and *Delete* still
+work. Enter and Backspace outside the table keep their guards: a paragraph
+never merges into a table, and Enter on the block escapes below it.
+
+Cells serialise **padded** (`| a   |`) — the canonical GFM form, stable from
+the first save onwards. An empty cell holds a `<br>` caret anchor in the
+editor and serialises empty.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+// Tables normalise to padded GFM cells on the first save, then stay
+// byte-stable.
+const editor = new EdodoWrite(host, { value: "| a | b |\n| --- | --- |\n| 1 | 2 |" });
+const padded = "| a   | b   |\n| --- | --- |\n| 1   | 2   |";
+assert.equal(editor.getMarkdown(), padded);
+editor.setMarkdown(padded, { silent: true });
+assert.equal(editor.getMarkdown(), padded);
+
+// The `table` command inserts a GFM-shaped table: thead header row + tbody.
+editor.setMarkdown("intro", { silent: true });
+editor.exec("table", { rows: 2, cols: 2 });
+assert.equal(editor.content.querySelectorAll("thead th").length, 2);
+assert.equal(editor.content.querySelectorAll("tbody tr").length, 1);
+assert.ok(editor.getMarkdown().includes("| --- | --- |"));
+editor.destroy();
+```
+
 ## Block handles (hover gutter)
 
 Hover any block for the left-gutter handle:
@@ -75,7 +153,8 @@ Hover any block for the left-gutter handle:
 - Drag the `⣿` grip to reorder top-level blocks (drop-indicator line + ghost).
 - **Click** the `⣿` grip for the block menu: *Turn into* (Text, Heading 1–3,
   Bulleted list, Numbered list, To-do list, Quote, Code), *Duplicate*, *Copy as
-  Markdown*, *Delete*.
+  Markdown*, *Delete*. On a table, *Turn into* is replaced by the **Table**
+  group (row/column operations — see [Tables](#tables)).
 
 ## Keyboard shortcuts
 
@@ -91,15 +170,15 @@ Hover any block for the left-gutter handle:
 | `⌘/Ctrl + Z` | Undo |
 | `⌘/Ctrl + Shift + Z` or `⌘/Ctrl + Y` | Redo |
 | `⌘/Ctrl + U` | Swallowed — Markdown has no underline |
-| `Tab` / `Shift + Tab` | Indent / outdent a list item (implemented by the editor, not the browser; the first item of a list cannot indent) |
-| `Shift + Enter` | Soft line break within a block (a backslash hard break in the Markdown); a plain newline inside a code block |
+| `Tab` / `Shift + Tab` | Indent / outdent a list item (implemented by the editor, not the browser; the first item of a list cannot indent). In a table: next / previous cell — see [Tables](#tables) |
+| `Shift + Enter` | Soft line break within a block (a backslash hard break in the Markdown); a plain newline inside a code block; a literal `<br>` inside a table cell |
 | `Enter` (in/at end of a heading or quote) | New **paragraph** below |
 | `Enter` (in a list item) | Split the item; in an **empty** item, exit the list |
 | `Enter` (in a code block) | New line, not a new block |
-| `Enter` (on a table) | Escape to a paragraph below the table |
+| `Enter` (in a table cell) | The cell below; from the last row, escape to a paragraph below the table |
 | `Backspace` (start of heading/quote) | Convert to paragraph |
 | `Backspace` (start of a list item) | Outdent; at top level, turn into a paragraph |
-| `Backspace` (start of paragraph) | Merge into the previous block; a preceding divider is deleted; a table is never merged into |
+| `Backspace` (start of paragraph) | Merge into the previous block; a preceding divider (or widget figure) is deleted; a table is never merged into |
 
 `Mod` shortcuts from plugins run before the built-ins — `highlight()` binds
 `⌘/Ctrl + Shift + H`.
@@ -185,11 +264,13 @@ editor.destroy();
 Task-list checkboxes are interactive in the editor; ticking one updates the
 Markdown from `[ ]` to `[x]`.
 
-## Notes & limits (v0.3)
+## Notes & limits
 
-- **Tables render and round-trip, but there is no table-editing UX yet.**
-  Guards keep them safe: Enter escapes below a table, Backspace never merges a
-  paragraph into one.
+- **Tables are fully editable GFM tables** — typing in cells, Tab/Shift+Tab
+  navigation, Enter row-hopping, and block-menu row/column operations (see
+  [Tables](#tables)). Two limits come from GFM itself: the header **row** is
+  required (deleting it is refused with a toast), and a header **column** is
+  not representable, so none is offered.
 - **Toggles / `<details>` are deliberately rejected** — they have no clean
   Markdown form, and this editor never stores anything Markdown can't express
   (`details`/`summary` are not in the sanitiser's allow-list).

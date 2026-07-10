@@ -190,9 +190,15 @@ export function resolvePlugins(plugins: EdodoPlugin[], exclude: string[] = []): 
     if (plugin.markdown?.marked) reg.markedExtensions.push(...plugin.markdown.marked);
     if (plugin.markdown?.turndown) reg.turndownExtensions.push(plugin.markdown.turndown);
     if (plugin.sanitize) {
+      const attributes = { ...(reg.sanitize?.attributes ?? {}) };
+      // Merge per-tag attribute lists — two plugins widening the same tag
+      // (e.g. both adding figure data-attrs) must both survive.
+      for (const [tag, names] of Object.entries(plugin.sanitize.attributes ?? {})) {
+        attributes[tag] = [...new Set([...(attributes[tag] ?? []), ...names])];
+      }
       reg.sanitize = {
-        tags: [...(reg.sanitize?.tags ?? []), ...(plugin.sanitize.tags ?? [])],
-        attributes: { ...(reg.sanitize?.attributes ?? {}), ...(plugin.sanitize.attributes ?? {}) },
+        tags: [...new Set([...(reg.sanitize?.tags ?? []), ...(plugin.sanitize.tags ?? [])])],
+        attributes,
       };
     }
   }

@@ -494,3 +494,81 @@ body.ew-dragging-active { cursor: grabbing !important; user-select: none !import
   0%, 100% { opacity: 0.6; }
   50% { opacity: 0.3; }
 }
+
+/* ── Widgets (source-carrying figures: diagrams, math blocks, embeds) ─────── */
+.ew-content figure[data-widget] {
+  margin: 0.9em 0;
+  border: 1px solid var(--ew-border);
+  border-radius: var(--ew-radius);
+  background: var(--ew-bg-subtle);
+  cursor: pointer;
+  overflow: hidden;
+}
+.ew-content figure[data-widget]:hover { border-color: var(--ew-accent); }
+.ew-widget__surface { min-height: 48px; padding: 0.5rem; }
+figure[data-widget^="diagram"] .ew-widget__surface { height: 340px; padding: 0; }
+.ew-widget__surface.is-busy {
+  background: linear-gradient(100deg, transparent 40%, rgba(127,127,127,0.12) 50%, transparent 60%);
+  background-size: 200% 100%;
+  animation: ew-widget-shimmer 1.2s linear infinite;
+}
+@keyframes ew-widget-shimmer { to { background-position-x: -200%; } }
+.ew-widget__error {
+  font-family: var(--ew-font-mono);
+  font-size: 0.85em;
+  color: #dc2626;
+  padding: 0.6rem 0.8rem;
+  white-space: pre-wrap;
+}
+.ew-widget-editor { min-width: 380px; max-width: 520px; }
+.ew-widget-editor__source {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--ew-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border: 1px solid var(--ew-border);
+  border-radius: 8px;
+  background: var(--ew-bg-subtle);
+  color: inherit;
+  resize: vertical;
+  outline: none;
+  margin-bottom: 6px;
+}
+.ew-widget-editor__source:focus { border-color: var(--ew-accent); }
+
+/* Inline math chips */
+.ew-content .ew-math {
+  font-family: var(--ew-font-mono);
+  background: var(--ew-accent-soft);
+  border-radius: 5px;
+  padding: 0.08em 0.3em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Tag chips (links decorated by the tags plugin) */
+.ew-content a.ew-tag {
+  display: inline-block;
+  background: var(--ew-accent-soft);
+  color: var(--ew-accent);
+  border-radius: 6px;
+  padding: 0.02em 0.4em;
+  text-decoration: none;
+  font-weight: 500;
+}
+.ew-content a.ew-tag:hover { text-decoration: underline; }
+
+/* Embed cards */
+figure[data-widget="embed"] .ew-widget__surface { padding: 0; min-height: 0; }
+.ew-embed__frame { width: 100%; aspect-ratio: 16 / 9; border: none; display: block; }
+.ew-embed__media { width: 100%; display: block; }
+.ew-embed__card { display: flex; gap: 12px; padding: 12px 14px; align-items: center; }
+.ew-embed__card-body { min-width: 0; }
+.ew-embed__card-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ew-embed__card-desc { font-size: 0.85em; color: var(--ew-fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ew-embed__card-url { font-size: 0.8em; color: var(--ew-fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ew-embed__card-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex: none; }
+
+/* Tag suggestion menu reuses .ew-menu styles via the UI layer. */

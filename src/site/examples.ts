@@ -99,6 +99,56 @@ export function greet(name) {
 Press Enter inside a code block for a newline (not a new paragraph).`,
   },
   {
+    id: "powerups",
+    label: "Power-ups",
+    markdown: `# Power-ups
+
+Everything below is **pure Markdown** — check the panel on the right.
+
+## Diagrams (edodo-draw)
+
+\`\`\`edd
+scene {
+  rect  md   "Markdown"      { fill: yellow }
+  round-rect ed "edodo-write" { fill: blue }
+  ellipse    us "Your app"    { fill: green }
+  md --> ed --> us
+}
+\`\`\`
+
+Click the diagram to edit its source. Mermaid fences render through the same
+engine.
+
+## Math
+
+Inline $E = mc^2$ and blocks:
+
+$$
+x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}
+$$
+
+## Tables
+
+Type \`/table\`, then Tab through cells — Tab at the end adds a row; the block
+menu (click the grip) adds and removes rows and columns.
+
+| Feature | Stored as |
+| --- | --- |
+| Diagrams | \`\`\`edd fences |
+| Math | $…$ / $$…$$ |
+| Tags | plain links |
+
+## Tags
+
+Type \`#\` and pick: [#roadmap](https://github.com/vivmagarwal/edodo-write/issues) [#markdown](#)
+
+## Embeds
+
+A bare URL on its own line becomes a media card:
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ`,
+  },
+  {
     id: "article",
     label: "Article",
     markdown: `# The case for Markdown-native editing

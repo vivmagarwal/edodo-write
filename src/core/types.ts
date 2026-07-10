@@ -57,6 +57,7 @@ export interface CommandPayloads {
   codeBlock: void;
   divider: void;
   image: { src: string; alt?: string };
+  table: { rows?: number; cols?: number };
 }
 
 /** Every declared command name (built-ins + augmented plugin commands). */

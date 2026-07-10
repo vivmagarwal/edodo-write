@@ -122,7 +122,7 @@ assert.ok(codec.parse("==hi==").includes("<mark>hi</mark>"));
 
 ### Stage 2 — Playwright E2E: everything interactive
 
-Run: `npm run test:e2e` (99 tests in 9 spec files, Chromium, ~12 s). The Vite
+Run: `npm run test:e2e` (144 tests in 15 spec files, Chromium, ~22 s). The Vite
 dev server is started automatically by Playwright's `webServer` config (and
 reused if one is already running outside CI).
 

@@ -37,6 +37,14 @@ from the saved value.
 - **Images** — paste a screenshot, drop a file, or upload / paste a URL from
   the `/image` popover; hosting is pluggable (`uploadImage`) with a
   zero-config data-URL fallback, and the saved Markdown is just `![alt](url)`.
+- **Tables** — `/table` inserts a GFM table; type in cells, Tab/Enter walk
+  them (Tab at the end adds a row), and the block menu adds/deletes rows and
+  columns — the saved Markdown is a plain GFM table.
+- **Math, diagrams, tags & embeds** (plugins) — `$x^2$` / `$$…$$` TeX (KaTeX
+  when installed), live ` ```edd `/` ```mermaid ` diagram widgets via
+  [edodo-draw](https://github.com/vivmagarwal/edododraw), `#tag`/`@mention`
+  chips fed by *your* suggestion source, and bare-URL video/audio/bookmark
+  embeds — each stored as plain, degradable Markdown.
 - **Floating selection toolbar** (Medium-style).
 - **Link popover** — ⌘/Ctrl+K, toolbar, or click a link to edit / open /
   remove; paste a URL over a selection to link it.
@@ -48,8 +56,9 @@ from the saved value.
   ⌘/Ctrl+Y), consistent across typing, commands, paste and drag.
 - **Plugins** — commands, input rules, keymaps, menu items, and *paired*
   markdown extensions per editor instance; collisions throw, runtime errors
-  are isolated. First-party: `highlight()` (`==text==`) and `callout()`
-  (GitHub alert syntax).
+  are isolated. First-party: `highlight()`, `callout()`, `math()`,
+  `diagrams()`/`edodoDraw()`, `tags()`, `embeds()` — see
+  [First-party plugins](docs/FIRST_PARTY_PLUGINS.md).
 - **Robust editing** — Enter/Backspace/Tab do the Notion-like thing; a
   document normaliser repairs native `contentEditable` damage after every
   input; IME-safe input rules.
@@ -105,19 +114,26 @@ syntax round-trips like everything else:
 
 ```ts
 import { EdodoWrite } from "edodo-write";
-import { highlight } from "edodo-write/plugins";
+import { highlight, callout, math, edodoDraw, tags, embeds } from "edodo-write/plugins";
 import { strict as assert } from "node:assert";
 
 const host = document.createElement("div");
 document.body.appendChild(host);
 
 const editor = new EdodoWrite(host, {
-  value: "Ship ==highlighted== prose.",
-  plugins: [highlight()], // ==text== ↔ <mark>, Mod-Shift-H, toolbar button
+  value: "Ship ==highlighted== prose with $E=mc^2$ inline.",
+  plugins: [
+    highlight(),                      // ==text== ↔ <mark>, Mod-Shift-H
+    callout(),                        // > [!NOTE] callouts (GitHub alerts)
+    math(),                           // $tex$ / $$…$$ — KaTeX when installed
+    edodoDraw(),                      // ```edd + ```mermaid diagram widgets
+    tags({ source: async () => [] }), // #tag menu fed by YOUR source
+    embeds(),                         // bare-URL video/audio/bookmark embeds
+  ],
 });
 
 assert.ok(editor.getHTML().includes("<mark>highlighted</mark>"));
-assert.equal(editor.getMarkdown(), "Ship ==highlighted== prose."); // byte-for-byte
+assert.equal(editor.getMarkdown(), "Ship ==highlighted== prose with $E=mc^2$ inline."); // byte-for-byte
 editor.destroy();
 ```
 
@@ -147,6 +163,8 @@ npm run test:e2e  # Playwright (real-browser behaviour)
   can type, the full keyboard table, the output flavour
 - **[Image hosting](docs/IMAGE_HOSTING.md)** — the `uploadImage` contract,
   worked hosting configs, the data-URL fallback
+- **[First-party plugins](docs/FIRST_PARTY_PLUGINS.md)** — highlight, callout,
+  math, diagrams, tags, embeds: options, stored Markdown, degradation
 - **[Plugin guide](docs/PLUGIN_GUIDE.md)** — write a plugin
 - **[Architecture](docs/ARCHITECTURE.md)** — how the round-trip works
 - **[Development guide](docs/DEVELOPMENT.md)** — contributing

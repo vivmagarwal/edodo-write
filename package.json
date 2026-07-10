@@ -1,6 +1,6 @@
 {
   "name": "edodo-write",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
   "license": "MIT",
@@ -77,6 +77,8 @@
     "turndown": "^7.2.0"
   },
   "peerDependencies": {
+    "edododraw": ">=0.1.4",
+    "katex": ">=0.16",
     "react": ">=18",
     "react-dom": ">=18"
   },
@@ -85,6 +87,12 @@
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "edododraw": {
+      "optional": true
+    },
+    "katex": {
       "optional": true
     }
   },
@@ -95,7 +103,9 @@
     "@types/react-dom": "^18.3.5",
     "@types/turndown": "^5.0.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "edododraw": "^0.1.4",
     "jsdom": "^25.0.1",
+    "katex": "^0.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.7.2",

@@ -20,6 +20,7 @@ const DOCS = [
   ["GETTING_STARTED.md", "Getting started"],
   ["ARCHITECTURE.md", "Architecture"],
   ["PLUGIN_GUIDE.md", "Plugin guide"],
+  ["FIRST_PARTY_PLUGINS.md", "First-party plugins"],
   ["INTEGRATION_GUIDE.md", "Embed in your app (API)"],
   ["IMAGE_HOSTING.md", "Image hosting"],
   ["MARKDOWN_AND_SHORTCUTS.md", "Markdown support & shortcuts"],

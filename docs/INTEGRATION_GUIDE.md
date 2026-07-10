@@ -142,9 +142,13 @@ unregistered name warns in the console and returns `false`, it never throws.
 | `codeBlock` | — | Toggle a fenced code block. |
 | `divider` | — | Insert a `---` divider after the caret block. |
 | `image` | `{ src: string; alt?: string }` | Insert an image block followed by an empty paragraph. |
+| `table` | `{ rows?: number; cols?: number }` | Insert a GFM table (default 3×3, clamped to 50×12: a `thead` header row + body rows) after the caret block; the caret lands in the first header cell. Editing behaviour: [Tables](MARKDOWN_AND_SHORTCUTS.md#tables). |
 
-Plugins in this repo add `highlight` (no payload) and
-`callout` (`{ kind?: "note" | "tip" | "important" | "warning" | "caution" }`).
+Plugins in this repo add `highlight` (no payload),
+`callout` (`{ kind?: "note" | "tip" | "important" | "warning" | "caution" }`)
+and `diagram` (`{ lang: string; source?: string }`, registered by both
+`diagrams()` and `edodoDraw()`) — see
+[First-party plugins](FIRST_PARTY_PLUGINS.md).
 
 ```ts
 import { EdodoWrite } from "edodo-write";
@@ -304,6 +308,15 @@ mechanics) is deliberately not pluggable.
 See the **[Plugin guide](PLUGIN_GUIDE.md)** for the full plugin API, and
 `src/plugins/highlight.ts` for the canonical ~50-line example.
 
+**First-party plugins.** Six ship with the package, importable from
+`edodo-write/plugins`: `highlight()` (`==text==`), `callout()` (GitHub
+alerts), `math()` (`$…$` / `$$…$$` TeX, KaTeX when installed), `diagrams()` /
+`edodoDraw()` (fenced code → live diagram widgets, mermaid included),
+`tags({ source })` (`#tag`/`@mention` chips fed by your own suggestion
+source, stored as plain GFM), and `embeds()` (a bare URL line → video / audio
+/ bookmark widget). Each one's options, exact stored Markdown, and degradation
+story are documented in **[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
+
 ## Built-in behaviours (no configuration)
 
 On by default whenever the editor is editable:
@@ -342,8 +355,12 @@ On by default whenever the editor is editable:
   padding is clickable, Notion-style.
 - **Per-block placeholder.** A focused empty paragraph in a non-empty document
   shows a "Type “/” for commands…" hint.
-- **Table guards.** Enter on a table escapes to a paragraph below it; Backspace
-  never merges a paragraph into a table (real table editing is not built yet).
+- **Table editing.** Tables are editable in place: Tab/Shift+Tab walk cells
+  (Tab in the last cell appends a row), Enter moves down a row (and escapes
+  below from the last row), and the block menu offers row/column operations
+  with the GFM-required header row protected. Guards still hold: Backspace
+  never merges a paragraph into a table. Details:
+  [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).
 - **Document normaliser.** After every input, native `contentEditable` damage
   (stray root text nodes, emptied block shells, styled spans) is repaired
   before input rules run.

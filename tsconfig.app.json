@@ -17,7 +17,12 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@core/*": ["src/core/*"]
+      "@core/*": ["src/core/*"],
+      "edodo-write": ["src/lib/index.ts"],
+      "edodo-write/react": ["src/lib/react.tsx"],
+      "edodo-write/plugins": ["src/plugins/index.ts"],
+      "edodo-write/testing": ["src/lib/testing.ts"],
+      "edodo-write/styles.css": ["src/styles.css"]
     }
   },
   "include": ["src", "tests"]

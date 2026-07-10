@@ -33,7 +33,7 @@ const ZWSP = "​";
 
 const BLOCK_TAGS = new Set([
   "P", "H1", "H2", "H3", "H4", "H5", "H6",
-  "UL", "OL", "BLOCKQUOTE", "PRE", "HR", "TABLE",
+  "UL", "OL", "BLOCKQUOTE", "PRE", "HR", "TABLE", "FIGURE",
 ]);
 
 const EMPTY_DOC_HTML = "<p><br></p>";
@@ -156,7 +156,19 @@ export function normalizeDocument(root: HTMLElement): boolean {
         break;
       }
       case "HR":
-      case "TABLE":
+        break;
+      case "TABLE": {
+        // Every cell needs a placeable caret (typing into an empty cell).
+        el.querySelectorAll("td, th").forEach((cell) => {
+          if (!(cell as HTMLElement).firstChild) {
+            cell.appendChild(document.createElement("br"));
+          }
+        });
+        break;
+      }
+      case "FIGURE":
+        // Widgets (diagrams, embeds…): non-editable islands owned by plugins.
+        el.setAttribute("contenteditable", "false");
         break;
       default:
         ensureCaretAnchor(el);
@@ -181,7 +193,7 @@ export function normalizeDocument(root: HTMLElement): boolean {
  */
 export function isEffectivelyEmpty(root: HTMLElement): boolean {
   if (visibleText(root).trim() !== "") return false;
-  return !root.querySelector("img,hr,input,table,pre");
+  return !root.querySelector("img,hr,input,table,pre,figure");
 }
 
 /** Keep a task item's checkbox-first + caret-anchor structure intact. */

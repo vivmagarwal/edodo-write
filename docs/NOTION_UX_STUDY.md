@@ -47,8 +47,9 @@ when I press X", this is the reference.
 | **Enter in a list item** | New item | ✅ same |
 | **Enter in an EMPTY list item** | Exits the list to a paragraph | ✅ same |
 | **Enter in a code block** | Newline | ✅ same |
-| **Enter on a table** | — | ✅ escapes to a paragraph below (guard; see divergences) |
-| **Shift+Enter** | Soft line break within the block | ✅ same (serialized as a backslash hard break) |
+| **Enter in a table cell** | Moves down a row | ✅ same — the cell below; from the last row it escapes to a paragraph below the table |
+| **Tab / Shift+Tab in a table** | Next / previous cell | ✅ same — Tab in the last cell appends a row; Shift+Tab never escapes the table |
+| **Shift+Enter** | Soft line break within the block | ✅ same (serialized as a backslash hard break; a literal `<br>` inside a table cell) |
 | **Backspace at start of heading/quote** | Convert to text | ✅ same (→ paragraph) |
 | **Backspace at start of list item** | Outdent / unlist to text | ✅ same |
 | **Backspace at start of paragraph** | Merge into previous block | ✅ same (deletes a preceding divider outright; never merges into a table or code block) |
@@ -71,6 +72,15 @@ when I press X", this is the reference.
 | **Image** | Picker / embed dialog | ✅ slash item → URL + alt popover → `![alt](src)` |
 | **Per-block placeholder** | "Type / for commands…" on the focused empty line | ✅ same (document-level placeholder covers the empty document) |
 | **Click below the last block** | Appends a paragraph | ✅ same |
+
+### Rich blocks (tables, equations, mentions, embeds)
+
+| Behaviour | Notion | edodo-write |
+|---|---|---|
+| **Tables** | Full grid: type in cells, add/delete rows & columns, optional header row/column | ✅ GFM tables: type in cells; Tab/Enter navigation; block-menu *Add row below / Add column right / Delete row / Delete column* on the caret's cell. The header **row** is required (GFM) and protected by a toast; a header **column** has no GFM form (see divergences) |
+| **Equations** (inline + block) | KaTeX inline `$…$`-style and block equations | ✅ via the `math()` plugin — `$x^2$` chips and `$$…$$` widgets, KaTeX rendering when installed, styled plain TeX otherwise; stored as GitHub-native math syntax |
+| **@-mentions** | People/pages via `@` | ✅ via the `tags()` plugin — a configurable trigger (`#`, `@`, …) and *your* suggestion source; stored as plain GFM links (`[#tag](href)`) or plain text — zero invented syntax |
+| **Media embeds** (video/audio/bookmark) | Paste a URL → embed block | ✅ via the `embeds()` plugin — a paragraph that is one bare URL becomes a player/bookmark widget; stored as the bare URL line; a written `[title](url)` link is the opt-out |
 
 ### Data in / data out
 
@@ -136,21 +146,34 @@ is an extension flavour (Obsidian et al.), so it ships as the first-party
 `highlight()` plugin (`==text==` ↔ `<mark>`, Mod-Shift-H) that integrators opt
 into knowing their Markdown consumers support it.
 
-**Tables render and round-trip, but have no editing UX yet.** GFM tables
-parse, display, and serialize faithfully; until real table editing lands, two
-guards prevent corruption: Enter on a table escapes to a paragraph below it
-(splitting would clone the `<table>`), and Backspace never merges a paragraph
-into a table.
+**Tables are editable, with two GFM-imposed rules.** Typing, Tab/Enter
+navigation and block-menu row/column operations are full parity (see the
+rich-blocks table above). The divergences are GFM's, not ours: the header
+**row** is required — *Delete row* on it refuses with a toast ("Markdown
+tables need their header row") — and a header **column** is not representable
+in GFM, so unlike Notion none is offered. The old guards still hold: Enter
+never splits the `<table>` element, and Backspace never merges a paragraph
+into one.
 
 **No underline** — from the toolbar, a shortcut, or Mod-U (swallowed).
 Markdown has no underline; a native `<u>` would silently vanish from the
 serialized value, which is worse than refusing.
 
-**No databases, columns, or embeds.** Notion-native structures without a
-Markdown equivalent. The block set is exactly what GFM can represent:
-headings, paragraphs, lists (bullet/ordered/task), quotes (+ callouts via
-plugin), code blocks, dividers, images, links, tables — extendable through
-plugins *only* where a paired Markdown form exists.
+**Columns are deliberately NOT shipped.** GFM has no columns; raw-HTML
+wrappers are rejected policy (same as toggles); Pandoc-style `:::` fenced divs
+degrade to visible clutter; and the editing engine's document model is
+deliberately a FLAT list of top-level blocks — that flatness is why
+Enter/Backspace/drag/select-all are reliable. Columns require an engine
+milestone (nested block scopes) before a plugin can exist. Roadmap item, not a
+hack.
+
+**No databases.** Notion-native structures without a Markdown equivalent stay
+out. The block set is exactly what GFM can represent: headings, paragraphs,
+lists (bullet/ordered/task), quotes (+ callouts via plugin), code blocks,
+dividers, images, links, tables — plus plugin blocks with a paired, degradable
+Markdown form (math, diagram fences, tag links, bare-URL embeds — see
+[First-party plugins](FIRST_PARTY_PLUGINS.md)). Extendable through plugins
+*only* where such a form exists.
 
 **Nesting depth**: lists nest via Tab; the common cases are supported. Deeply
 nested mixed structures are best authored in Markdown directly.
@@ -179,7 +202,7 @@ The original study drove Notion live via Playwright (typed sequences
 exercising `#`, `-`, `>`, Enter after a heading, Enter on an empty list item;
 hovered blocks to inspect the gutter handles) and inspected the resulting
 block DOM. edodo-write's side of the matrix is enforced continuously: the
-Playwright suite (99 tests across 9 spec files, `npm run test:e2e`) drives the
+Playwright suite (144 tests across 15 spec files, `npm run test:e2e`) drives the
 same behaviours against the fixture page with real typing and asserts on
 `getMarkdown()` — see [DEVELOPMENT.md](DEVELOPMENT.md) → "Three-stage
 testing".

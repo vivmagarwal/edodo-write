@@ -13,7 +13,7 @@
  */
 import "../styles.css";
 import { EdodoWrite, type EdodoPlugin, type ImageUploader } from "../lib/index.js";
-import { highlight, callout } from "../plugins/index.js";
+import { highlight, callout, math, diagrams, edodoDraw, tags, embeds } from "../plugins/index.js";
 
 declare global {
   interface Window {
@@ -22,7 +22,37 @@ declare global {
   }
 }
 
-const AVAILABLE: Record<string, () => EdodoPlugin> = { highlight, callout };
+const AVAILABLE: Record<string, () => EdodoPlugin> = {
+  highlight,
+  callout,
+  math: () => math(),
+  // Deterministic fake renderer for E2E assertions (no engine dependency).
+  diagrams: () =>
+    diagrams({
+      renderers: {
+        fake: (source, el) => {
+          const pre = document.createElement("div");
+          pre.className = "fake-diagram";
+          pre.textContent = `rendered:${source.trim()}`;
+          el.appendChild(pre);
+        },
+      },
+    }),
+  // The real engine (edododraw is a devDependency of this repo).
+  edododraw: () => edodoDraw(),
+  tags: () =>
+    tags({
+      source: (query: string) => {
+        const all = [
+          { label: "alpha", href: "https://example.com/tags/alpha" },
+          { label: "beta", href: "https://example.com/tags/beta" },
+          { label: "gamma" },
+        ];
+        return all.filter((t) => t.label.startsWith(query.toLowerCase()));
+      },
+    }),
+  embeds: () => embeds(),
+};
 
 const params = new URLSearchParams(location.search);
 const plugins = (params.get("plugins") ?? "")

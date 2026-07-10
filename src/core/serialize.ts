@@ -62,6 +62,20 @@ export function createTurndownService(extensions: SerializerExtension[] = []): T
   // turndown already unwraps unknown inline tags, this just makes it explicit.
   td.keep(["mark"]);
 
+  // <br> inside a table cell: a backslash hard break would rupture the row.
+  // A lone <br> is just the cell's caret anchor (serialize to nothing);
+  // a genuine line break becomes literal <br> — the GFM idiom for multi-line
+  // cells, which parses straight back to a <br>.
+  td.addRule("cellLineBreaks", {
+    filter: (node) =>
+      node.nodeName === "BR" && !!node.parentNode && /^(TD|TH)$/.test(node.parentNode.nodeName),
+    replacement: (_content, node) => {
+      const parent = node.parentNode as HTMLElement;
+      const alone = parent.childNodes.length === 1;
+      return alone ? "" : "<br>";
+    },
+  });
+
   // Pending image uploads never reach the Markdown: a save that fires while
   // an upload is in flight must not persist a blob:/placeholder URL. The
   // editor swaps in the hosted URL (and drops data-uploading) on completion.

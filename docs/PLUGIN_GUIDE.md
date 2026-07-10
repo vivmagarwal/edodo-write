@@ -602,6 +602,64 @@ assert.ok(rehydrated.includes('data-callout="note"'));
 assert.equal(decorated.serialize(rehydrated), md);
 ```
 
+## Widget plugins (source-carrying blocks)
+
+Some blocks are not editable text at all — a rendered diagram, a display
+equation, a media embed. The shared machinery in `src/plugins/widget.ts`
+(exported from `edodo-write/plugins`) implements them as
+`<figure data-widget="<kind>" data-source="…">`: the **source lives in the
+`data-source` attribute**, which is the single thing your turndown rule
+serializes back to Markdown — so the rendered view can be anything (SVG,
+iframe, card) without ever touching the round-trip.
+
+| Helper | What it does |
+|---|---|
+| `createWidget(kind, source)` | Build the figure for insertion: `contenteditable="false"`, with a dedicated render surface as its only child. |
+| `mountWidgets(ctx, spec)` | Reconcile all figures of `spec.kind` under the root: (re)render any whose source changed since the last pass, skip the rest (tracked via `data-rendered`). Idempotent and cheap — call it from `setup` **and** `on.change`. `spec.render` may be async; a rejection renders a readable error box instead of breaking the editor. |
+| `wireWidgetEditing(ctx, spec)` | Click-to-edit: by default a source-textarea popover with Save/Cancel (saving is one transaction + a re-render); pass `edit: false` to disable or a custom handler. Returns the cleanup — return it from `setup`. |
+| `escapeAttr(value)` | HTML-escape a source string for embedding in a `data-` attribute from a marked renderer (newlines survive attribute round-trips). |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createWidget } from "edodo-write/plugins";
+
+const figure = createWidget("my-widget", "raw source");
+assert.equal(figure.tagName, "FIGURE");
+assert.equal(figure.getAttribute("data-widget"), "my-widget");
+assert.equal(figure.getAttribute("data-source"), "raw source");
+assert.equal(figure.getAttribute("contenteditable"), "false");
+```
+
+The engine already treats `FIGURE` as a first-class block: Enter escapes to a
+paragraph below it, Backspace before it deletes it whole (one undoable step,
+Notion-style), drag reorders it, and the block menu hides *Turn into* for it.
+Your plugin contributes only the widget-specific parts:
+
+- the **paired markdown extension** — a marked renderer/tokenizer that emits
+  the figure (use `escapeAttr` for the attributes) and a turndown rule that
+  writes `data-source` back to your syntax;
+- a `sanitize` widening for the figure's tags/attributes **when the figure
+  comes from parsing** (`math()` and `diagrams()` declare
+  `{ tags: ["figure"], attributes: { figure: [...] } }`; `embeds()` needs
+  none because its figures are created by a DOM reconciliation pass, never by
+  the parser);
+- `setup` (mount + wire editing, return the cleanup) and `on.change`
+  (re-mount).
+
+One turndown trap the shipped plugins already solve: turndown routes "blank"
+nodes past the rule array entirely, and a widget that has not rendered yet
+**is** blank — a save landing in that window would silently drop the block.
+Either keep the figure non-blank from birth (the math approach: the surface
+carries the source as text until the render replaces it) or shim the
+serializer's blank rule for your figures (the diagrams/embeds approach).
+
+Worked references, in reading order: `src/plugins/math.ts` (`$$` blocks — plus
+inline chips outside the figure machinery), `src/plugins/diagrams.ts` (fenced
+languages, per-language renderers), `src/plugins/embeds.ts` (widgets created
+by reconciliation instead of parsing). Their user-facing behaviour is
+documented in [First-party plugins](FIRST_PARTY_PLUGINS.md) — this section is
+about building your own.
+
 ## The EditorContext reference
 
 Every plugin entry point — commands, rules, key handlers, menu items, `setup`,

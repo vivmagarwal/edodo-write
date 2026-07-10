@@ -19,7 +19,7 @@ The package ships five entry points:
 |---|---|
 | `edodo-write` | `EdodoWrite` core + functional helpers (framework-free) |
 | `edodo-write/react` | `<EdodoWriteEditor />` + `<Markdown />` |
-| `edodo-write/plugins` | First-party plugins: `highlight()`, `callout()` |
+| `edodo-write/plugins` | First-party plugins: `highlight()`, `callout()`, `math()`, `diagrams()` / `edodoDraw()`, `tags()`, `embeds()` + the widget helpers |
 | `edodo-write/testing` | `createCodec` / `assertRoundTrip` for plugin authors |
 | `edodo-write/styles.css` | The stylesheet — import it explicitly |
 
@@ -69,10 +69,16 @@ export function Notes() {
 
 ## Plugins in one minute
 
-Optional features ship as plugins; pass them at construction. The first-party
-`highlight()` plugin adds `==text==` ↔ `<mark>` (with a `Mod-Shift-H` shortcut
-and a toolbar button), and `callout()` adds Notion-style callouts stored as
-GitHub alert syntax (`> [!NOTE]`).
+Optional features ship as plugins; pass them at construction. Six are
+first-party: `highlight()` (`==text==` ↔ `<mark>`, with a `Mod-Shift-H`
+shortcut and a toolbar button), `callout()` (Notion-style callouts stored as
+GitHub alert syntax, `> [!NOTE]`), `math()` (`$x^2$` / `$$…$$` TeX — KaTeX
+when installed), `diagrams()` / `edodoDraw()` (fenced ` ```edd ` and
+` ```mermaid ` blocks rendered as live diagrams), `tags({ source })`
+(`#tag`/`@mention` chips fed by your own suggestion source), and `embeds()`
+(a bare URL line becomes a video / audio / bookmark widget). Every one stores
+plain, degradable Markdown — the full guide is
+**[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
 
 ```ts
 import { EdodoWrite } from "edodo-write";
@@ -113,6 +119,9 @@ editor.destroy();
   ⌘/Ctrl+Y), consistent across every operation.
 - **Interactive task lists** — tick a checkbox and the Markdown flips
   `[ ]` → `[x]`.
+- **Tables** — `/table` inserts a GFM table; type in cells, Tab/Enter walk
+  them (Tab at the end adds a row), and the block menu adds/deletes rows and
+  columns — see [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).
 - **Images** — paste a screenshot, drag-and-drop files, or use `/image`
   (Upload button or a URL + alt form); hosting is pluggable via `uploadImage`,
   with a zero-config `data:`-URL fallback, and the value is always just
@@ -129,5 +138,8 @@ editor.destroy();
   can type, the full keyboard table, and the serialised-Markdown flavour.
 - **[Image hosting](IMAGE_HOSTING.md)** — where image bytes go: the
   `uploadImage` contract, worked hosting configs, the data-URL fallback.
+- **[First-party plugins](FIRST_PARTY_PLUGINS.md)** — highlight, callout,
+  math, diagrams, tags, embeds: options, the exact Markdown each stores, the
+  degradation story.
 - **[Plugin guide](PLUGIN_GUIDE.md)** — write your own plugin.
 - **[Architecture](ARCHITECTURE.md)** — how the Markdown round-trip works.
