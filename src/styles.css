@@ -1,0 +1,257 @@
+/*
+ * edodo-write — editor styles.
+ *
+ * One stylesheet covers the editable surface, the read-only <Markdown> render,
+ * the floating selection toolbar and the slash menu. Theming is via CSS custom
+ * properties with a light default, an automatic dark scheme
+ * (`prefers-color-scheme`), and an explicit override hook
+ * (`:root[data-theme="dark"]` / a `.ew--dark` / `.ew--light` class on the host).
+ *
+ * Consumers: `import "edodo-write/styles.css";`
+ */
+
+.ew {
+  --ew-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --ew-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --ew-fg: #1f2328;
+  --ew-fg-muted: #6b7280;
+  --ew-fg-faint: #aab1ba;
+  --ew-bg: #ffffff;
+  --ew-bg-subtle: #f6f7f8;
+  --ew-border: #e6e8eb;
+  --ew-accent: #0f766e;
+  --ew-accent-soft: rgba(15, 118, 110, 0.12);
+  --ew-code-bg: #f2f4f5;
+  --ew-code-fg: #b02a5b;
+
+  --ew-content-width: 46rem;
+  --ew-radius: 8px;
+
+  color: var(--ew-fg);
+  font-family: var(--ew-font);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ew {
+    --ew-fg: #e6e8eb;
+    --ew-fg-muted: #9aa3ad;
+    --ew-fg-faint: #5a636d;
+    --ew-bg: #16181c;
+    --ew-bg-subtle: #1e2127;
+    --ew-border: #2a2f37;
+    --ew-accent: #2dd4bf;
+    --ew-accent-soft: rgba(45, 212, 191, 0.16);
+    --ew-code-bg: #23272e;
+    --ew-code-fg: #ff8fab;
+  }
+}
+
+:root[data-theme="dark"] .ew, .ew.ew--dark {
+  --ew-fg: #e6e8eb;
+  --ew-fg-muted: #9aa3ad;
+  --ew-fg-faint: #5a636d;
+  --ew-bg: #16181c;
+  --ew-bg-subtle: #1e2127;
+  --ew-border: #2a2f37;
+  --ew-accent: #2dd4bf;
+  --ew-accent-soft: rgba(45, 212, 191, 0.16);
+  --ew-code-bg: #23272e;
+  --ew-code-fg: #ff8fab;
+}
+:root[data-theme="light"] .ew, .ew.ew--light {
+  --ew-fg: #1f2328;
+  --ew-fg-muted: #6b7280;
+  --ew-fg-faint: #aab1ba;
+  --ew-bg: #ffffff;
+  --ew-bg-subtle: #f6f7f8;
+  --ew-border: #e6e8eb;
+  --ew-accent: #0f766e;
+  --ew-accent-soft: rgba(15, 118, 110, 0.12);
+  --ew-code-bg: #f2f4f5;
+  --ew-code-fg: #b02a5b;
+}
+
+/* ── Editable surface ─────────────────────────────────────────────────────── */
+.ew-content {
+  max-width: var(--ew-content-width);
+  margin: 0 auto;
+  padding: 0.25rem 0.25rem 40vh;
+  outline: none;
+  caret-color: var(--ew-accent);
+  word-break: break-word;
+}
+.ew-content--readonly { padding-bottom: 1rem; }
+
+.ew-content::selection, .ew-content *::selection { background: var(--ew-accent-soft); }
+
+/* Placeholder shown only when the doc is empty. */
+.ew-content.ew-content--empty::before {
+  content: attr(data-placeholder);
+  color: var(--ew-fg-faint);
+  pointer-events: none;
+  position: absolute;
+}
+
+/* ── Block typography (Notion/Medium-ish) ─────────────────────────────────── */
+.ew-content > :first-child { margin-top: 0; }
+.ew-content p { margin: 0.55em 0; }
+.ew-content h1, .ew-content h2, .ew-content h3,
+.ew-content h4, .ew-content h5, .ew-content h6 {
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.6em 0 0.5em;
+  letter-spacing: -0.01em;
+}
+.ew-content h1 { font-size: 2.05em; margin-top: 0.4em; }
+.ew-content h2 { font-size: 1.55em; }
+.ew-content h3 { font-size: 1.25em; }
+.ew-content h4 { font-size: 1.05em; }
+
+.ew-content a { color: var(--ew-accent); text-decoration: underline; text-underline-offset: 2px; }
+.ew-content strong { font-weight: 700; }
+.ew-content em { font-style: italic; }
+.ew-content del { color: var(--ew-fg-muted); }
+
+.ew-content code {
+  font-family: var(--ew-font-mono);
+  font-size: 0.88em;
+  background: var(--ew-code-bg);
+  color: var(--ew-code-fg);
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+}
+.ew-content pre {
+  background: var(--ew-code-bg);
+  border: 1px solid var(--ew-border);
+  border-radius: var(--ew-radius);
+  padding: 0.9em 1.05em;
+  margin: 0.9em 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.ew-content pre code {
+  background: none;
+  color: var(--ew-fg);
+  padding: 0;
+  font-size: 0.9em;
+  line-height: 1.55;
+}
+
+.ew-content blockquote {
+  margin: 0.9em 0;
+  padding: 0.15em 0 0.15em 1em;
+  border-left: 3px solid var(--ew-accent);
+  color: var(--ew-fg-muted);
+}
+
+.ew-content ul, .ew-content ol { margin: 0.55em 0; padding-left: 1.5em; }
+.ew-content li { margin: 0.2em 0; }
+.ew-content li > p { margin: 0; }
+
+.ew-content hr {
+  border: none;
+  border-top: 2px solid var(--ew-border);
+  margin: 1.4em 0;
+}
+
+.ew-content img { max-width: 100%; border-radius: var(--ew-radius); }
+
+.ew-content table { border-collapse: collapse; margin: 0.9em 0; width: 100%; }
+.ew-content th, .ew-content td { border: 1px solid var(--ew-border); padding: 0.4em 0.6em; text-align: left; }
+.ew-content th { background: var(--ew-bg-subtle); font-weight: 600; }
+
+/* Task lists */
+.ew-content ul.contains-task-list { list-style: none; padding-left: 0.2em; }
+.ew-content li.task-list-item { display: flex; align-items: flex-start; gap: 0.5em; }
+.ew-content li.task-list-item > input[type="checkbox"] {
+  margin-top: 0.42em;
+  width: 1em; height: 1em;
+  accent-color: var(--ew-accent);
+  cursor: pointer;
+  flex: none;
+}
+.ew-content li.task-list-item[data-task="done"] { color: var(--ew-fg-muted); }
+.ew-content li.task-list-item[data-task="done"] > * { text-decoration: line-through; }
+.ew-content li.task-list-item[data-task="done"] > input { text-decoration: none; }
+
+/* ── Floating selection toolbar ───────────────────────────────────────────── */
+.ew-toolbar {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  z-index: 2147483000;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  padding: 4px;
+  background: #101418;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  font-family: var(--ew-font);
+}
+.ew-toolbar.is-visible { display: flex; }
+.ew-toolbar__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e6e8eb;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.ew-toolbar__btn:hover { background: rgba(255, 255, 255, 0.12); }
+.ew-toolbar__btn.is-active { color: var(--ew-accent, #2dd4bf); background: rgba(45, 212, 191, 0.16); }
+.ew-toolbar__btn[data-cmd="italic"] { font-style: italic; }
+.ew-toolbar__btn[data-cmd="strike"] { text-decoration: line-through; }
+.ew-toolbar__btn[data-cmd="code"] { font-family: var(--ew-font-mono); font-size: 11px; }
+
+/* ── Slash menu ───────────────────────────────────────────────────────────── */
+.ew-slash {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  z-index: 2147483000;
+  display: none;
+  width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--ew-bg, #fff);
+  color: var(--ew-fg, #1f2328);
+  border: 1px solid var(--ew-border, #e6e8eb);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  font-family: var(--ew-font);
+}
+.ew-slash.is-visible { display: block; }
+.ew-slash__item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+}
+.ew-slash__item:hover, .ew-slash__item.is-active { background: var(--ew-accent-soft, rgba(15, 118, 110, 0.12)); }
+.ew-slash__title { font-size: 14px; font-weight: 600; }
+.ew-slash__hint { font-size: 12px; color: var(--ew-fg-muted, #6b7280); }
