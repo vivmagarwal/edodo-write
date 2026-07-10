@@ -16,3 +16,6 @@ coverage/
 *.tsbuildinfo
 public/llms.txt
 public/llms-full.txt
+test-results/
+playwright-report/
+tests/.docs-tmp/

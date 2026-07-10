@@ -18,12 +18,12 @@ const SITE = pkg.homepage.replace(/\/$/, "");
 // [file, title] — same order as the docs site nav.
 const DOCS = [
   ["GETTING_STARTED.md", "Getting started"],
+  ["ARCHITECTURE.md", "Architecture"],
+  ["PLUGIN_GUIDE.md", "Plugin guide"],
   ["INTEGRATION_GUIDE.md", "Embed in your app (API)"],
   ["MARKDOWN_AND_SHORTCUTS.md", "Markdown support & shortcuts"],
-  ["ARCHITECTURE.md", "Architecture"],
-  ["DEVELOPMENT.md", "Development guide"],
-  ["EXTENDING_GUIDE.md", "Extending"],
   ["NOTION_UX_STUDY.md", "Notion UX study"],
+  ["DEVELOPMENT.md", "Development guide"],
 ];
 
 const L = [];

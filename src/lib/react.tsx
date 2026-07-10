@@ -10,8 +10,6 @@
  * React is a peer dependency; the core entry never imports it.
  */
 
-import "../styles.css";
-
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { EdodoWrite } from "../core/editor.js";

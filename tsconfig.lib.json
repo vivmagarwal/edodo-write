@@ -9,5 +9,9 @@
     "rootDir": "src",
     "composite": false
   },
-  "include": ["src/lib", "src/core"]
+  "include": [
+    "src/lib",
+    "src/core",
+    "src/plugins"
+  ]
 }

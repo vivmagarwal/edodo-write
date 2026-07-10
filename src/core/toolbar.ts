@@ -4,57 +4,41 @@
  * `document.body` (position: absolute) so it is never clipped by the editor's
  * overflow, and it `preventDefault`s its own mousedown so clicking a button
  * never collapses the selection it is about to format.
+ *
+ * Buttons come from the plugin registry (core preset + plugins). Active state
+ * is resolved per item: an explicit `isActive`, else the item's command's
+ * `isActive` via `SelectionInfo.marks`.
  */
 
-import type { Command, SelectionInfo } from "./types.js";
-
-interface ToolbarButton {
-  cmd: Command;
-  label: string;
-  title: string;
-  activeKey?: keyof SelectionInfo;
-}
-
-const BUTTONS: ToolbarButton[] = [
-  { cmd: "bold", label: "B", title: "Bold  (⌘B)", activeKey: "bold" },
-  { cmd: "italic", label: "I", title: "Italic  (⌘I)", activeKey: "italic" },
-  { cmd: "strike", label: "S", title: "Strikethrough", activeKey: "strike" },
-  { cmd: "code", label: "</>", title: "Inline code", activeKey: "code" },
-  { cmd: "link", label: "🔗", title: "Link  (⌘K)", activeKey: "link" },
-  { cmd: "heading1", label: "H1", title: "Heading 1" },
-  { cmd: "heading2", label: "H2", title: "Heading 2" },
-  { cmd: "blockquote", label: "❝", title: "Quote" },
-];
-
-export interface ToolbarDeps {
-  exec: (cmd: Command) => void;
-  requestLink: () => void;
-}
+import type { EditorContext, SelectionInfo, ToolbarItem } from "./types.js";
+import { guard } from "./plugin.js";
 
 export class SelectionToolbar {
   private el: HTMLElement;
-  private buttons = new Map<Command, HTMLButtonElement>();
+  private buttons = new Map<string, HTMLButtonElement>();
 
-  constructor(private deps: ToolbarDeps) {
+  constructor(private items: ToolbarItem[], private ctx: EditorContext) {
     this.el = document.createElement("div");
-    this.el.className = "ew-toolbar";
+    this.el.className = "ew ew-toolbar";
     this.el.setAttribute("role", "toolbar");
     this.el.addEventListener("mousedown", (e) => e.preventDefault());
 
-    for (const b of BUTTONS) {
+    for (const item of items) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ew-toolbar__btn";
-      btn.dataset.cmd = b.cmd;
-      btn.textContent = b.label;
-      btn.title = b.title;
-      btn.setAttribute("aria-label", b.title);
+      btn.dataset.cmd = item.id;
+      btn.textContent = item.label;
+      btn.title = item.title;
+      btn.setAttribute("aria-label", item.title);
       btn.addEventListener("click", (e) => {
         e.preventDefault();
-        if (b.cmd === "link") this.deps.requestLink();
-        else this.deps.exec(b.cmd);
+        guard("toolbar", `item "${item.id}"`, () => {
+          if (item.run) item.run(this.ctx);
+          else if (item.command) this.ctx.exec(item.command as string, item.payload);
+        });
       });
-      this.buttons.set(b.cmd, btn);
+      this.buttons.set(item.id, btn);
       this.el.appendChild(btn);
     }
     document.body.appendChild(this.el);
@@ -65,10 +49,12 @@ export class SelectionToolbar {
       this.hide();
       return;
     }
-    for (const b of BUTTONS) {
-      const btn = this.buttons.get(b.cmd);
+    for (const item of this.items) {
+      const btn = this.buttons.get(item.id);
       if (!btn) continue;
-      const active = b.activeKey ? Boolean(info[b.activeKey]) : false;
+      const active = item.isActive
+        ? !!guard("toolbar", `isActive "${item.id}"`, () => item.isActive!(info, this.ctx))
+        : !!(item.command && info.marks[item.command]);
       btn.classList.toggle("is-active", active);
     }
     this.show(info.rect);

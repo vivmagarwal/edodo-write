@@ -6,7 +6,19 @@
  * This strips scripts, event handlers, and `javascript:` URLs, and allow-lists
  * the tag/attribute set the editor understands. It runs anywhere a DOM is
  * available (browsers + jsdom/happy-dom in tests).
+ *
+ * Plugins may WIDEN the allow-list additively (extra tags/attributes for their
+ * parsed HTML to survive) via `SanitizeOptions` — but the denial floor is not
+ * negotiable: scripts, iframes, event handlers, and script-scheme URLs are
+ * always stripped regardless of what an extension asks for.
  */
+
+export interface SanitizeOptions {
+  /** Extra allowed tags (lowercase). */
+  tags?: string[];
+  /** Extra allowed attributes per tag (lowercase). */
+  attributes?: Record<string, string[]>;
+}
 
 const ALLOWED_TAGS = new Set([
   "p", "br", "hr",
@@ -19,7 +31,12 @@ const ALLOWED_TAGS = new Set([
   "table", "thead", "tbody", "tr", "th", "td",
   "input", // task-list checkboxes only (filtered below)
   "span", "div",
-  "details", "summary",
+]);
+
+/** The non-negotiable denial floor — never allowed, even via extensions. */
+const DENIED_TAGS = new Set([
+  "script", "style", "iframe", "object", "embed", "form", "link", "meta",
+  "noscript", "base", "template", "frame", "frameset", "applet",
 ]);
 
 const GLOBAL_ATTRS = new Set(["class", "id", "dir", "title", "data-checked", "data-task"]);
@@ -37,17 +54,41 @@ const TAG_ATTRS: Record<string, Set<string>> = {
 const URL_ATTRS = new Set(["href", "src"]);
 
 function safeUrl(value: string): boolean {
-  const v = value.trim().toLowerCase();
+  // Browsers strip ASCII control chars (tab/newline/CR) when parsing URLs, so
+  // "jav\tascript:…" IS a live javascript: URL — strip them before checking.
+  const v = value.replace(/[\u0000-\u001f]/g, "").trim().toLowerCase();
   if (v.startsWith("javascript:") || v.startsWith("data:text/html") || v.startsWith("vbscript:")) {
     return false;
   }
   return true;
 }
 
-function cleanElement(el: Element): void {
+interface ResolvedPolicy {
+  tags: Set<string>;
+  attrs: Record<string, Set<string>>;
+}
+
+function resolvePolicy(options?: SanitizeOptions): ResolvedPolicy {
+  if (!options || (!options.tags?.length && !options.attributes)) {
+    return { tags: ALLOWED_TAGS, attrs: TAG_ATTRS };
+  }
+  const tags = new Set(ALLOWED_TAGS);
+  for (const t of options.tags ?? []) {
+    const tag = t.toLowerCase();
+    if (!DENIED_TAGS.has(tag)) tags.add(tag);
+  }
+  const attrs: Record<string, Set<string>> = { ...TAG_ATTRS };
+  for (const [tag, names] of Object.entries(options.attributes ?? {})) {
+    const key = tag.toLowerCase();
+    attrs[key] = new Set([...(attrs[key] ?? []), ...names.map((n) => n.toLowerCase())]);
+  }
+  return { tags, attrs };
+}
+
+function cleanElement(el: Element, policy: ResolvedPolicy): void {
   const tag = el.tagName.toLowerCase();
 
-  if (!ALLOWED_TAGS.has(tag)) {
+  if (!policy.tags.has(tag)) {
     // Unwrap unknown elements: keep their children, drop the wrapper.
     const parent = el.parentNode;
     if (parent) {
@@ -63,7 +104,7 @@ function cleanElement(el: Element): void {
     return;
   }
 
-  const allowedForTag = TAG_ATTRS[tag];
+  const allowedForTag = policy.attrs[tag];
   for (const attr of Array.from(el.attributes)) {
     const name = attr.name.toLowerCase();
     const isAllowed =
@@ -87,19 +128,20 @@ function cleanElement(el: Element): void {
  * Sanitise an HTML string. Returns cleaned HTML. Safe to call in Node test
  * environments (jsdom) and in browsers.
  */
-export function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string, options?: SanitizeOptions): string {
+  const policy = resolvePolicy(options);
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
   const root = doc.body.firstElementChild as HTMLElement | null;
   if (!root) return "";
 
   // Remove dangerous elements outright before unwrapping unknowns.
-  root.querySelectorAll("script,style,iframe,object,embed,form,link,meta,noscript").forEach((n) => n.remove());
+  root.querySelectorAll(Array.from(DENIED_TAGS).join(",")).forEach((n) => n.remove());
 
   // Depth-first walk; snapshot the node list because we mutate the tree.
   const all = Array.from(root.querySelectorAll("*"));
   for (const el of all) {
     // Element may have been detached by a previous unwrap; skip if so.
-    if (el.isConnected) cleanElement(el);
+    if (el.isConnected) cleanElement(el, policy);
   }
   return root.innerHTML;
 }

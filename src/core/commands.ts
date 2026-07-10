@@ -1,57 +1,29 @@
 /**
- * Formatting commands. `applyCommand` is the single entry point the toolbar,
- * slash-menu, keymap and public `editor.exec()` all funnel through.
+ * Built-in formatting commands. All transforms funnel through the command
+ * registry; `applyCommand` remains as the stable functional entry point
+ * (toolbar, slash-menu, keymap, input rules and `editor.exec()` all reach the
+ * same implementations).
  *
  * Inline marks (bold/italic/strike) use `document.execCommand` — deprecated but
- * consistent across browsers and wired into native undo. Block transforms are
- * hand-rolled DOM: `execCommand('formatBlock' | 'insertUnorderedList' | …)` is
- * silently dropped by Chrome when called synchronously inside an `input` event
- * (exactly where the Markdown input-rules run), so we never rely on it for
- * structure. Manual DOM also gives predictable, testable output.
+ * consistent across browsers. Block transforms are hand-rolled DOM:
+ * `execCommand('formatBlock' | 'insertUnorderedList' | …)` is silently dropped
+ * by Chrome when called synchronously inside an `input` event (exactly where
+ * the Markdown input-rules run), so we never rely on it for structure. Manual
+ * DOM also gives predictable, testable output.
+ *
+ * NOTE for maintainers: the caret placements sprinkled through these bodies
+ * (`placeCaretAtEnd` after `setBlock`, the ZWSP anchor in `toggleCodeBlock`,…)
+ * look redundant and are not — each one fixes a "typing lands in the wrong
+ * block" bug. Move, don't improve.
  */
 
-import type { Command } from "./types.js";
+import type { AnyCommand, CommandSpec, EditorContext } from "./types.js";
 import {
-  getRange, getSelection, currentBlock, currentListItem, closestWithin,
-  createElement, placeCaretAtEnd, ensureNotEmpty,
+  getRange, getSelection, currentBlock, closestWithin, blockKindOf,
+  createElement, placeCaretAtEnd, placeCaretAtStart, ensureNotEmpty,
 } from "./dom.js";
 
-export function applyCommand(root: HTMLElement, cmd: Command, payload?: { href?: string | null }): void {
-  root.focus();
-  switch (cmd) {
-    case "bold": document.execCommand("bold"); break;
-    case "italic": document.execCommand("italic"); break;
-    case "strike": document.execCommand("strikeThrough"); break;
-    case "code": toggleInlineCode(root); break;
-    case "link": applyLink(root, payload?.href); break;
-    case "clear": clearFormatting(root); break;
-    case "paragraph": setBlock(root, "P"); break;
-    case "heading1": setBlock(root, "H1"); break;
-    case "heading2": setBlock(root, "H2"); break;
-    case "heading3": setBlock(root, "H3"); break;
-    case "bulletList": toList(root, { ordered: false }); break;
-    case "orderedList": toList(root, { ordered: true }); break;
-    case "taskList": toList(root, { ordered: false, task: true }); break;
-    case "blockquote": toggleBlockquote(root); break;
-    case "codeBlock": toggleCodeBlock(root); break;
-    case "divider": insertDivider(root); break;
-  }
-}
-
-/** True when the given inline mark is active at the current selection. */
-export function isInlineActive(root: HTMLElement, kind: "bold" | "italic" | "strike" | "code" | "link"): boolean {
-  const range = getRange();
-  if (kind === "bold") return safeState("bold");
-  if (kind === "italic") return safeState("italic");
-  if (kind === "strike") return safeState("strikeThrough");
-  if (!range) return false;
-  const tag = kind === "code" ? "CODE" : "A";
-  return !!closestWithin(range.startContainer, root, (el) => el.tagName === tag);
-}
-
-function safeState(cmd: string): boolean {
-  try { return document.queryCommandState(cmd); } catch { return false; }
-}
+const ZWSP = String.fromCharCode(0x200b);
 
 // ── Small DOM helpers ──────────────────────────────────────────────────────
 
@@ -166,7 +138,7 @@ function insertDivider(root: HTMLElement): void {
   } else {
     root.append(hr, p);
   }
-  placeCaretAtStartOf(p);
+  placeCaretAtStart(p);
 }
 
 function toggleCodeBlock(root: HTMLElement): void {
@@ -174,7 +146,7 @@ function toggleCodeBlock(root: HTMLElement): void {
   if (!block) return;
   if (block.tagName === "PRE") {
     const p = createElement("p");
-    p.textContent = block.textContent || "";
+    p.textContent = (block.textContent || "").split(ZWSP).join("");
     if (!p.textContent) p.innerHTML = "<br>";
     block.replaceWith(p);
     placeCaretAtEnd(p);
@@ -183,33 +155,54 @@ function toggleCodeBlock(root: HTMLElement): void {
   const pre = document.createElement("pre");
   const code = document.createElement("code");
   code.textContent = block.textContent || "";
+  // An empty <code> is not a placeable caret, and a <br> inside <pre> would
+  // mean a newline — anchor with a zero-width text node (stripped on
+  // serialize) so the first typed character lands INSIDE the code block.
+  if (!code.textContent) code.appendChild(document.createTextNode(ZWSP));
   pre.appendChild(code);
   block.replaceWith(pre);
   placeCaretAtEnd(code);
 }
 
-function placeCaretAtStartOf(el: HTMLElement): void {
-  const sel = getSelection();
-  if (!sel) return;
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
+function insertImage(root: HTMLElement, payload: { src: string; alt?: string }): void {
+  if (!payload?.src) return;
+  const block = currentBlock(root) || (root.lastElementChild as HTMLElement | null);
+  const p = document.createElement("p");
+  const img = createElement("img", { src: payload.src, alt: payload.alt ?? "" });
+  p.appendChild(img);
+  const after = createElement("p", {}, "<br>");
+  if (block) {
+    block.after(p);
+    p.after(after);
+    if ((block.textContent ?? "").split(ZWSP).join("").trim() === "" && block.tagName === "P") block.remove();
+  } else {
+    root.append(p, after);
+  }
+  placeCaretAtStart(after);
 }
 
 // ── Inline transforms ─────────────────────────────────────────────────────
 
-function toggleInlineCode(root: HTMLElement): void {
+/** Toggle an inline wrapper tag at the selection (the generalized machinery
+ *  behind inline code — exposed to plugins via `ctx.dom.toggleInlineTag`). */
+export function toggleInlineTag(root: HTMLElement, tag: string): void {
+  const upper = tag.toUpperCase();
   const range = getRange();
   if (!range) return;
-  const existing = closestWithin(range.startContainer, root, (el) => el.tagName === "CODE");
+  const existing = closestWithin(range.startContainer, root, (el) => el.tagName === upper);
   if (existing) {
     unwrap(existing);
     return;
   }
   if (range.collapsed) return;
-  wrapRange(range, "code");
+  wrapRange(range, tag);
+}
+
+export function isInlineTagActive(root: HTMLElement, tag: string): boolean {
+  const upper = tag.toUpperCase();
+  const range = getRange();
+  if (!range) return false;
+  return !!closestWithin(range.startContainer, root, (el) => el.tagName === upper);
 }
 
 function applyLink(root: HTMLElement, href?: string | null): void {
@@ -217,10 +210,27 @@ function applyLink(root: HTMLElement, href?: string | null): void {
   if (!range) return;
   const existing = closestWithin(range.startContainer, root, (el) => el.tagName === "A");
   if (href == null || href === "") {
-    if (existing) document.execCommand("unlink");
+    if (existing) {
+      // execCommand("unlink") silently no-ops on a collapsed caret — the
+      // link must be selected first.
+      const sel = getSelection();
+      if (sel) {
+        const r = document.createRange();
+        r.selectNodeContents(existing);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      document.execCommand("unlink");
+    }
     return;
   }
-  if (range.collapsed && !existing) {
+  if (existing) {
+    // Editing an existing link updates it in place (createLink would no-op
+    // on a collapsed caret and split the link on a partial selection).
+    existing.setAttribute("href", href);
+    return;
+  }
+  if (range.collapsed) {
     const a = createElement("a", { href }, href);
     range.insertNode(a);
     placeCaretAtEnd(a);
@@ -270,4 +280,86 @@ function unwrap(el: HTMLElement): void {
     sel.removeAllRanges();
     sel.addRange(r);
   }
+}
+
+function safeState(cmd: string): boolean {
+  try { return document.queryCommandState(cmd); } catch { return false; }
+}
+
+// ── The command specs ──────────────────────────────────────────────────────
+
+function blockSpec(tag: string, kind: string): CommandSpec<void> {
+  return {
+    run: (ctx) => setBlock(ctx.root, tag),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === kind,
+  };
+}
+
+/** The built-in command implementations, keyed by command name. */
+export const coreCommands: Record<string, CommandSpec<any>> = {
+  bold: { run: () => { document.execCommand("bold"); }, isActive: () => safeState("bold") },
+  italic: { run: () => { document.execCommand("italic"); }, isActive: () => safeState("italic") },
+  strike: { run: () => { document.execCommand("strikeThrough"); }, isActive: () => safeState("strikeThrough") },
+  code: {
+    run: (ctx) => toggleInlineTag(ctx.root, "code"),
+    isActive: (ctx) => isInlineTagActive(ctx.root, "code"),
+  },
+  link: {
+    run: (ctx, payload: { href: string | null }) => applyLink(ctx.root, payload?.href),
+    isActive: (ctx) => isInlineTagActive(ctx.root, "a"),
+  },
+  clear: { run: (ctx) => clearFormatting(ctx.root) },
+  paragraph: blockSpec("P", "paragraph"),
+  heading1: blockSpec("H1", "heading1"),
+  heading2: blockSpec("H2", "heading2"),
+  heading3: blockSpec("H3", "heading3"),
+  heading4: blockSpec("H4", "heading4"),
+  heading5: blockSpec("H5", "heading5"),
+  heading6: blockSpec("H6", "heading6"),
+  bulletList: {
+    run: (ctx) => toList(ctx.root, { ordered: false }),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "bulletList",
+  },
+  orderedList: {
+    run: (ctx) => toList(ctx.root, { ordered: true }),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "orderedList",
+  },
+  taskList: {
+    run: (ctx) => toList(ctx.root, { ordered: false, task: true }),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "taskList",
+  },
+  blockquote: {
+    run: (ctx) => toggleBlockquote(ctx.root),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "blockquote",
+  },
+  codeBlock: {
+    run: (ctx) => toggleCodeBlock(ctx.root),
+    isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "codeBlock",
+  },
+  divider: { run: (ctx) => insertDivider(ctx.root) },
+  image: { run: (ctx, payload: { src: string; alt?: string }) => insertImage(ctx.root, payload) },
+};
+
+// ── Stable functional entry points (public API + tests) ────────────────────
+
+/** A minimal context for standalone use — only `root` is populated, which is
+ *  all the core command bodies touch. */
+function bareContext(root: HTMLElement): EditorContext {
+  return { root } as unknown as EditorContext;
+}
+
+/** Apply a BUILT-IN command to the given root. The registry-free entry point
+ *  used by tests and headless callers; `editor.exec()` goes through the
+ *  editor's full registry instead. */
+export function applyCommand(root: HTMLElement, cmd: AnyCommand, payload?: unknown): void {
+  root.focus();
+  const spec = coreCommands[cmd];
+  if (!spec) return;
+  spec.run(bareContext(root), payload);
+}
+
+/** True when the given inline mark is active at the current selection. */
+export function isInlineActive(root: HTMLElement, kind: "bold" | "italic" | "strike" | "code" | "link"): boolean {
+  const spec = coreCommands[kind];
+  return spec?.isActive ? spec.isActive(bareContext(root)) : false;
 }

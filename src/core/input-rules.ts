@@ -2,96 +2,114 @@
  * Markdown input rules — the "type-to-format" magic.
  *
  * Two families:
- *   • Block rules fire when a trailing space turns the start of a paragraph
- *     into a heading / list / quote / task / … (`# `, `- `, `1. `, `> `,
- *     `[ ] `, ` ``` `, `--- `).
+ *   • Block rules fire when a trailing space turns the start of a block into
+ *     a heading / list / quote / task / … (`# `, `- `, `1. `, `> `, `[ ] `,
+ *     ` ``` `, `--- `).
  *   • Inline rules fire when a closing delimiter completes `**bold**`,
  *     `*italic*`, `` `code` `` or `~~strike~~`.
+ *
+ * The rule SETS live in the core preset (`preset.ts`) and plugins; this module
+ * is the RUNNER. It owns the contentEditable gotchas so no rule author ever
+ * has to learn them:
+ *   • a typed trailing space arrives as U+00A0 — normalized before matching;
+ *   • the block must be converted BEFORE the trigger text is deleted
+ *     (commands no-op on empty blocks);
+ *   • trigger deletion is anchored to the first TEXT node (a task checkbox
+ *     must never be swept into it);
+ *   • the emptied block needs a caret re-anchor (`<br>`, or a zero-width text
+ *     node after a task checkbox);
+ *   • a fresh inline mark parks the caret outside itself with a ZWSP.
  *
  * `runInputRules` is called from the editor's `input` handler and returns true
  * when it changed the document (so the editor knows to re-serialise).
  */
 
 import { applyCommand } from "./commands.js";
+import type { EditorContext } from "./types.js";
+import type { OwnedBlockRule, OwnedInlineRule } from "./plugin.js";
+import { guard, resolvePlugins } from "./plugin.js";
+import { corePreset } from "./preset.js";
 import {
   currentBlock, currentListItem, getRange, getSelection, textBeforeCaret,
-  placeCaretAtStart, placeCaretAfter, deleteLeadingChars,
+  placeCaretAtStart,
 } from "./dom.js";
-import type { Command } from "./types.js";
+import { deleteLeadingChars } from "./dom.js";
 
-interface BlockRule {
-  re: RegExp;
-  cmd: Command;
+const ZWSP = String.fromCharCode(0x200b);
+
+export interface RuleSet {
+  block: OwnedBlockRule[];
+  inline: OwnedInlineRule[];
 }
 
-const BLOCK_RULES: BlockRule[] = [
-  { re: /^# $/, cmd: "heading1" },
-  { re: /^## $/, cmd: "heading2" },
-  { re: /^### $/, cmd: "heading3" },
-  { re: /^> $/, cmd: "blockquote" },
-  { re: /^[-*] $/, cmd: "bulletList" },
-  { re: /^\d+\. $/, cmd: "orderedList" },
-  { re: /^\[[ xX]?\] $/, cmd: "taskList" },
-];
-
-interface InlineRule {
-  re: RegExp;
-  tag: string;
-}
-
-const INLINE_RULES: InlineRule[] = [
-  { re: /\*\*([^*\n]+)\*\*$/, tag: "strong" },
-  { re: /~~([^~\n]+)~~$/, tag: "del" },
-  { re: /`([^`\n]+)`$/, tag: "code" },
-  { re: /(?<![*\\])\*([^*\n]+)\*$/, tag: "em" },
-  { re: /(?<![_\w])_([^_\n]+)_$/, tag: "em" },
-];
-
-export function runInputRules(root: HTMLElement): boolean {
+/**
+ * Legacy/headless convenience: `runInputRules(root)` uses the core preset's
+ * rules with a minimal context (no editor instance required).
+ */
+export function runInputRules(root: HTMLElement, rules?: RuleSet, ctx?: EditorContext): boolean {
+  if (!rules || !ctx) {
+    const d = defaultSetup();
+    rules ??= d.rules;
+    ctx ??= d.ctxFor(root);
+  }
   const block = currentBlock(root);
   if (!block) return false;
 
-  // Block-level rules only apply to plain paragraphs at their very start.
-  if (block.tagName === "P") {
-    // contentEditable renders a typed trailing space as a non-breaking space,
-    // so normalise U+00A0 → " " before matching "# ", "> ", "- ", etc.
+  // Block rules: normalize the typed text once, for every rule. NBSP only —
+  // trigger lengths must count real DOM characters, so ZWSP is not stripped.
+  const tag = block.tagName;
+  if (tag !== "PRE") {
     const before = textBeforeCaret(block).replace(/ /g, " ");
-
-    // Fenced code: "``` " → code block.
-    if (before === "``` " || before === "``` ") {
-      deleteLeadingChars(block, before.length);
-      applyCommand(root, "codeBlock");
-      return true;
-    }
-    // Divider: "--- " → horizontal rule.
-    if (before === "--- " || before === "___ " || before === "*** ") {
-      deleteLeadingChars(block, before.length);
-      applyCommand(root, "divider");
-      return true;
-    }
-    for (const rule of BLOCK_RULES) {
-      if (rule.re.test(before)) {
-        const checked = /\[[xX]\]/.test(before);
-        // Convert the still-non-empty block FIRST (execCommand's formatBlock /
-        // insertUnorderedList no-op on an empty block), THEN strip the trigger.
-        applyCommand(root, rule.cmd);
-        const target = currentListItem(root) || currentBlock(root);
-        if (target) {
-          deleteLeadingChars(target, before.length);
-          anchorCaret(target);
+    for (const rule of rules.block) {
+      const within = rule.within ?? ["P"];
+      if (!within.includes(tag)) continue;
+      const m = rule.trigger.exec(before);
+      if (!m) continue;
+      const changed = guard(rule.plugin, "inputRules", () => {
+        if (typeof rule.apply === "string") {
+          applyBlockTrigger(root, rule.apply, before.length, ctx);
+          return true;
         }
-        if (rule.cmd === "taskList" && checked) checkCurrentTask(root);
-        return true;
-      }
+        return rule.apply(ctx, m, block);
+      });
+      if (changed) return true;
     }
   }
 
   // Inline rules never run inside a code block.
-  if (block.tagName === "PRE") return false;
-  return runInlineRules();
+  if (tag === "PRE") return false;
+  return runInlineRules(rules.inline, ctx);
 }
 
-function runInlineRules(): boolean {
+/**
+ * The shared block-trigger executor: convert the (still non-empty) block
+ * FIRST, then strip the trigger text, then re-anchor the caret. This exact
+ * order is load-bearing — see the module header.
+ */
+export function applyBlockTrigger(
+  root: HTMLElement,
+  cmd: string,
+  triggerLength: number,
+  ctx: EditorContext,
+): void {
+  const before = textBeforeCaret(currentBlock(root) ?? root).replace(/ /g, " ");
+  const checked = cmd === "taskList" && /\[[xX]\]/.test(before);
+  // One transaction: without it the exec would commit a history snapshot of
+  // the half-done state (block converted, trigger text still present).
+  ctx.transact(() => {
+    ctx.exec(cmd);
+    const target = currentListItem(root) || currentBlock(root);
+    if (target) {
+      deleteLeadingChars(target, triggerLength);
+      anchorCaret(target);
+    }
+    if (checked) checkCurrentTask(root);
+  });
+}
+
+// ── Inline rules ────────────────────────────────────────────────────────────
+
+function runInlineRules(rules: OwnedInlineRule[], ctx: EditorContext): boolean {
   const range = getRange();
   if (!range || !range.collapsed) return false;
   let node = range.startContainer;
@@ -109,42 +127,44 @@ function runInlineRules(): boolean {
   }
   const text = (node as Text).data.slice(0, offset);
 
-  for (const rule of INLINE_RULES) {
-    const m = rule.re.exec(text);
+  for (const rule of rules) {
+    const m = rule.trigger.exec(text);
     if (!m) continue;
-    const inner = m[1];
-    // The lookbehind in the `em` rules keeps the guard char out of the match,
-    // so `<delim>inner<delim>` is exactly the span to replace.
-    const from = offset - matchedDelimiterLength(rule, inner);
+    // The rules' lookbehinds keep any guard char out of the match, so m[0]
+    // is exactly the `<delim>inner<delim>` span to replace.
+    const from = offset - m[0].length;
     if (from < 0) continue;
-    replaceInline(node as Text, from, offset, rule.tag, inner);
-    return true;
+    const handled = guard(rule.plugin, "inputRules", () => {
+      const el = typeof rule.apply === "string"
+        ? markElement(rule.apply, m[1] ?? m[0])
+        : rule.apply(m);
+      replaceInlineSpan(node as Text, from, offset, el);
+      return true;
+    });
+    if (handled) return true;
   }
   return false;
 }
 
-/** Length of `<delim>inner<delim>` for the rule that matched. */
-function matchedDelimiterLength(rule: InlineRule, inner: string): number {
-  const d =
-    rule.tag === "strong" ? 2 :
-    rule.tag === "del" ? 2 :
-    rule.tag === "code" ? 1 :
-    1; // em: single * or _
-  return inner.length + d * 2;
+function markElement(tag: string, inner: string): Node {
+  const el = document.createElement(tag);
+  el.textContent = inner;
+  return el;
 }
 
-function replaceInline(node: Text, from: number, to: number, tag: string, inner: string): void {
+/**
+ * Replace `[from, to)` of a text node with `el`, then park the caret AFTER a
+ * zero-width space so continued typing lands outside the new mark (otherwise
+ * Chrome keeps typing inside the <strong>/<code>). The ZWSP is stripped by
+ * the serialiser, so it never reaches the Markdown.
+ */
+export function replaceInlineSpan(node: Text, from: number, to: number, el: Node): void {
   const range = document.createRange();
   range.setStart(node, from);
   range.setEnd(node, to);
   range.deleteContents();
-  const el = document.createElement(tag);
-  el.textContent = inner;
   range.insertNode(el);
-  // Park the caret AFTER a zero-width space so continued typing lands outside
-  // the new mark (otherwise Chrome keeps typing inside the <strong>/<code>).
-  // The ZWSP is stripped by the serialiser, so it never reaches the Markdown.
-  const tail = document.createTextNode(String.fromCharCode(0x200b));
+  const tail = document.createTextNode(ZWSP);
   el.parentNode?.insertBefore(tail, el.nextSibling);
   const sel = getSelection();
   if (sel) {
@@ -162,12 +182,12 @@ function replaceInline(node: Text, from: number, to: number, tag: string, inner:
  * Chrome inserts typed text BEFORE it — so text blocks get a `<br>` and task
  * items get a (zero-width) text node right after the checkbox.
  */
-function anchorCaret(target: HTMLElement): void {
+export function anchorCaret(target: HTMLElement): void {
   const checkbox = target.querySelector(':scope > input[type="checkbox"]');
   if (checkbox) {
     let tn = checkbox.nextSibling;
     if (!tn || tn.nodeType !== Node.TEXT_NODE) {
-      tn = document.createTextNode(String.fromCharCode(0x200b));
+      tn = document.createTextNode(ZWSP);
       checkbox.after(tn);
     }
     const sel = getSelection();
@@ -180,11 +200,25 @@ function anchorCaret(target: HTMLElement): void {
     }
     return;
   }
+  if (target.tagName === "PRE") {
+    // Anchor inside the <code>, on a zero-width text node — a <br> here would
+    // mean a newline.
+    const code = target.querySelector("code") ?? target;
+    if (!code.firstChild) code.appendChild(document.createTextNode(ZWSP));
+    const sel = getSelection();
+    if (sel && code.lastChild) {
+      const r = document.createRange();
+      r.selectNodeContents(code);
+      r.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    return;
+  }
   // Deleting the trigger can leave an EMPTY TEXT NODE behind; a block whose
   // only content is empty text is not a placeable caret target (Chrome types
   // before it). Normalise such blocks to a single <br> so the caret sticks.
-  const zwsp = String.fromCharCode(0x200b);
-  const meaningful = (target.textContent ?? "").split(zwsp).join("").length > 0;
+  const meaningful = (target.textContent ?? "").split(ZWSP).join("").length > 0;
   if (!meaningful && !target.querySelector("*")) {
     target.replaceChildren(document.createElement("br"));
   }
@@ -202,25 +236,25 @@ function checkCurrentTask(root: HTMLElement): void {
   li.setAttribute("data-task", "done");
 }
 
-/** Delete the first `n` characters of a block's text content. */
-function deleteLeading(block: HTMLElement, n: number): void {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  let remaining = n;
-  let endNode: Text | null = null;
-  let endOffset = 0;
-  let node = walker.nextNode() as Text | null;
-  while (node) {
-    if (node.data.length >= remaining) {
-      endNode = node;
-      endOffset = remaining;
-      break;
-    }
-    remaining -= node.data.length;
-    node = walker.nextNode() as Text | null;
-  }
-  if (!endNode) return;
-  const range = document.createRange();
-  range.setStart(block, 0);
-  range.setEnd(endNode, endOffset);
-  range.deleteContents();
+// ── Legacy/headless default setup ──────────────────────────────────────────
+
+let cachedDefault: { rules: RuleSet; ctxFor: (root: HTMLElement) => EditorContext } | null = null;
+
+function defaultSetup(): { rules: RuleSet; ctxFor: (root: HTMLElement) => EditorContext } {
+  if (cachedDefault) return cachedDefault;
+  const registry = resolvePlugins([corePreset()]);
+  cachedDefault = {
+    rules: { block: registry.blockRules, inline: registry.inlineRules },
+    ctxFor: (root: HTMLElement) => ({
+      root,
+      exec: (cmd: string, payload?: unknown) => { applyCommand(root, cmd, payload); return true; },
+      transact: <T,>(fn: () => T) => fn(),
+      dom: {
+        deleteLeadingChars: (block: HTMLElement, n: number) => deleteLeadingChars(block, n),
+      },
+    }) as unknown as EditorContext,
+  };
+  return cachedDefault;
 }
+
+export { applyCommand };

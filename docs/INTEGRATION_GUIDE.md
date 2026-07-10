@@ -1,14 +1,32 @@
 # Embed in your app (API)
 
 Two layers: a framework-free `EdodoWrite` class (`edodo-write`) and a thin React
-wrapper (`edodo-write/react`). Both read/write Markdown as the source of truth.
-The stylesheet is shipped separately: `import "edodo-write/styles.css"`.
+wrapper (`edodo-write/react`). Both read and write Markdown as the source of
+truth. The stylesheet is shipped separately — `import "edodo-write/styles.css"`.
+First-party plugins live at `edodo-write/plugins`; round-trip test helpers at
+`edodo-write/testing`.
 
 ## Core: `new EdodoWrite(host, options)`
 
-```js
+```ts
 import { EdodoWrite } from "edodo-write";
-const editor = new EdodoWrite(hostEl, options);
+import { highlight, callout } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "Some ==highlighted== words.",
+  plugins: [highlight(), callout()],
+  exclude: ["taskList"],
+});
+
+// Plugin markdown extensions are part of this editor's own pipeline.
+assert.equal(editor.getMarkdown(), "Some ==highlighted== words.");
+// Excluded core features are fully removed: exec warns and returns false.
+assert.equal(editor.exec("taskList"), false);
+editor.destroy();
 ```
 
 ### Options
@@ -16,118 +34,348 @@ const editor = new EdodoWrite(hostEl, options);
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `value` | `string` | `""` | Initial Markdown. |
-| `placeholder` | `string` | `"Write something, or type “/” for commands…"` | Shown when empty. |
-| `autofocus` | `boolean` | `false` | Focus after mount. |
-| `readOnly` | `boolean` | `false` | Render-only; no editing or toolbars. |
+| `placeholder` | `string` | `"Write something, or type “/” for commands…"` | Shown when the document is empty. |
+| `autofocus` | `boolean` | `false` | Focus after mount (ignored when read-only). |
+| `readOnly` | `boolean` | `false` | Render-only; no editing UI. Toggleable at runtime via `setReadOnly`. |
 | `toolbar` | `boolean` | `true` | Floating selection toolbar. |
 | `slashMenu` | `boolean` | `true` | `/` slash command menu. |
 | `spellcheck` | `boolean` | `true` | Native browser spellcheck. |
 | `className` | `string` | — | Extra class(es) on the host. |
 | `ariaLabel` | `string` | — | ARIA label for the editable region. |
 | `onChange` | `(md: string) => void` | — | Convenience `change` listener. |
+| `plugins` | `EdodoPlugin[]` | `[]` | Plugins, applied in order after the core preset. Resolved **once at construction** — create a new editor to change the set. Name/command/item-id collisions throw. |
+| `exclude` | `string[]` | `[]` | Core-preset feature keys (command names / item ids) to remove, e.g. `["taskList", "codeBlock"]`. Only affects the core preset, never plugins. |
 
 ### Methods
 
 | Method | Returns | Description |
 |---|---|---|
 | `getMarkdown()` | `string` | Serialise the current document to Markdown. |
-| `setMarkdown(md, { silent? })` | `void` | Replace the document. `silent` suppresses the `change` event. |
+| `setMarkdown(md, { silent? })` | `void` | Replace the document. `silent: true` skips the history snapshot and the `change` event. |
 | `getHTML()` | `string` | Current editor HTML (rarely needed). |
-| `isEmpty()` | `boolean` | Whether the document has no meaningful content. |
+| `isEmpty()` | `boolean` | No visible text and no image/divider/checkbox/code block. |
 | `focus()` / `blur()` | `void` | Focus control. |
-| `exec(cmd, payload?)` | `void` | Apply a formatting command (see below). |
-| `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also bound to ⌘/Ctrl+Z and ⌘/Ctrl+Shift+Z). |
-| `setReadOnly(bool)` | `void` | Toggle editing at runtime. |
-| `on(event, handler)` | `() => void` | Subscribe; returns an unsubscribe fn. |
+| `exec(cmd, payload?)` | `boolean` | Run a registered command. `false` when read-only, unregistered (warns), or the command refused. |
+| `transact(fn)` | `T` | Batch DOM mutations into **one** undo step and **one** change event. Re-entrant. |
+| `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z, ⌘/Ctrl+Y). |
+| `setReadOnly(bool)` | `void` | Toggle editing at runtime — works in both directions. |
+| `on(event, handler)` | `() => void` | Subscribe; returns an unsubscribe function. |
 | `off(event, handler)` | `void` | Unsubscribe. |
-| `destroy()` | `void` | Remove all DOM, listeners and floating UI. |
+| `destroy()` | `void` | Run plugin cleanups, remove all DOM, listeners and floating UI. |
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# One" });
+
+editor.setMarkdown("# Two"); // records history, schedules a change event
+assert.equal(editor.getMarkdown(), "# Two");
+assert.ok(editor.getHTML().includes("<h1>Two</h1>"));
+assert.equal(editor.isEmpty(), false);
+
+editor.undo();
+assert.equal(editor.getMarkdown(), "# One");
+editor.redo();
+assert.equal(editor.getMarkdown(), "# Two");
+editor.destroy();
+```
 
 ### Events
 
-- `change: (markdown: string) => void` — debounced (~120 ms) after edits.
-- `selection: (info | null) => void` — active marks + block kind + rect; `null`
-  when the selection leaves the editor.
-- `focus: () => void`, `blur: () => void`.
+| Event | Payload | When |
+|---|---|---|
+| `change` | `(markdown: string)` | Debounced (~120 ms) after edits; `undo`/`redo` deliver it synchronously. |
+| `selection` | `(info: SelectionInfo \| null)` | Selection moved; `null` when it leaves the editor. |
+| `focus` / `blur` | — | The editable region gained/lost focus. |
 
-### Commands (`editor.exec(cmd)`)
+`SelectionInfo` carries `empty`, `collapsed`, the five built-in mark flags
+(`bold`, `italic`, `strike`, `code`, `link`), an **open-world `marks` record**
+(the `isActive()` result of every registered command that defines one — plugin
+commands included), the current `block` kind (`"paragraph"`, `"heading1"`…
+`"heading6"`, `"bulletList"`, `"orderedList"`, `"taskList"`, `"blockquote"`,
+`"codeBlock"`, `"other"`), and a viewport `rect` for positioning your own UI.
 
-`bold`, `italic`, `strike`, `code`, `link` (`exec("link", { href })`), `clear`,
-`paragraph`, `heading1`–`heading3`, `bulletList`, `orderedList`, `taskList`,
-`blockquote`, `codeBlock`, `divider`.
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
 
-```js
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# One" });
+
+const seen: string[] = [];
+const off = editor.on("change", (md) => seen.push(md));
+
+editor.setMarkdown("# Two"); // change is debounced (~120 ms) after edits…
+editor.undo();               // …but undo/redo deliver it synchronously
+assert.deepEqual(seen, ["# One"]);
+
+off();                       // on() returned an unsubscribe function
+editor.redo();
+assert.deepEqual(seen, ["# One"]); // no longer listening
+editor.destroy();
+```
+
+### Commands (`editor.exec`)
+
+Commands are typed through the `CommandPayloads` interface: the payload argument
+is **required exactly when the command declares one**, and TypeScript
+autocompletes every declared name. Plugins add their own commands via module
+augmentation; plain-JS callers can pass any string (`AnyCommand`) — executing an
+unregistered name warns in the console and returns `false`, it never throws.
+
+| Command | Payload | Effect |
+|---|---|---|
+| `bold`, `italic`, `strike` | — | Toggle the inline mark at the selection. |
+| `code` | — | Toggle inline `<code>` at the selection. |
+| `link` | `{ href: string \| null }` | Set/replace the link at the selection; `null` (or `""`) removes it. |
+| `clear` | — | Remove inline formatting at the selection. |
+| `paragraph` | — | Turn the caret block into a paragraph. |
+| `heading1` … `heading6` | — | Turn the caret block into a heading; running it again toggles back to a paragraph. |
+| `bulletList`, `orderedList`, `taskList` | — | Turn the caret block into a list (or toggle the list off; `taskList` upgrades a plain bullet list in place). |
+| `blockquote` | — | Toggle a quote. |
+| `codeBlock` | — | Toggle a fenced code block. |
+| `divider` | — | Insert a `---` divider after the caret block. |
+| `image` | `{ src: string; alt?: string }` | Insert an image block followed by an empty paragraph. |
+
+Plugins in this repo add `highlight` (no payload) and
+`callout` (`{ kind?: "note" | "tip" | "important" | "warning" | "caution" }`).
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "Make me a heading" });
+
+// Block commands act on the block that holds the caret/selection.
+const p = editor.content.querySelector("p")!;
+const range = document.createRange();
+range.selectNodeContents(p);
+range.collapse(false);
+const sel = window.getSelection()!;
+sel.removeAllRanges();
+sel.addRange(range);
+
 editor.exec("heading2");
-editor.exec("link", { href: "https://example.com" });
+assert.equal(editor.getMarkdown(), "## Make me a heading");
+
+// Payloads are required exactly when the command declares one.
+editor.exec("image", { src: "https://example.com/cat.png", alt: "A cat" });
+assert.equal(
+  editor.getMarkdown(),
+  "## Make me a heading\n\n![A cat](https://example.com/cat.png)",
+);
+editor.destroy();
+```
+
+Declaring a payload for your own command (TypeScript):
+
+```ts no-run
+declare module "edodo-write" {
+  interface CommandPayloads {
+    myEmbed: { url: string };
+  }
+}
+// Now editor.exec("myEmbed", { url }) is fully typed — and
+// editor.exec("myEmbed") is a compile error.
+```
+
+### Transactions
+
+`transact(fn)` batches any number of mutations (including nested `exec` calls)
+into a single undo step and a single change event:
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "start" });
+
+editor.transact(() => {
+  editor.exec("divider");
+  editor.exec("divider");
+});
+assert.equal(editor.getMarkdown(), "start\n\n---\n\n---");
+
+editor.undo(); // ONE undo reverts the whole transaction
+assert.equal(editor.getMarkdown(), "start");
+editor.destroy();
 ```
 
 ## React: `<EdodoWriteEditor />`
 
-```jsx
-import { EdodoWriteEditor } from "edodo-write/react";
+```tsx
+import { useRef, useState } from "react";
+import { EdodoWriteEditor, Markdown } from "edodo-write/react";
+import type { EdodoWrite, SelectionInfo } from "edodo-write/react";
+import { highlight } from "edodo-write/plugins";
+import "edodo-write/styles.css";
 
-<EdodoWriteEditor
-  value={md}
-  onChange={setMd}
-  placeholder="Write…"
-  readOnly={false}
-  toolbar
-  slashMenu
-  className="my-editor"
-  onReady={(editor) => { /* imperative handle */ }}
-  onSelection={(info) => { /* build your own toolbar */ }}
-/>;
+export function Notes() {
+  const [md, setMd] = useState("# Hello");
+  const editorRef = useRef<EdodoWrite | null>(null);
+  return (
+    <div>
+      <EdodoWriteEditor
+        value={md}
+        onChange={setMd}
+        placeholder="Write…"
+        plugins={[highlight()]}
+        onReady={(editor) => { editorRef.current = editor; }}
+        onSelection={(info: SelectionInfo | null) => console.log(info?.block)}
+      />
+      <Markdown value={md} />
+    </div>
+  );
+}
 ```
 
-`value` is treated as "initial + controlled": an external change that differs
-from the last value the editor emitted re-hydrates the document. Echoing the
-`onChange` value straight back (the usual controlled pattern) never clobbers the
-caret.
+The wrapper's contract:
 
-### `<Markdown value={md} />`
-
-A read-only renderer that shares the editor's stylesheet. Use it to display
-stored Markdown.
-
-## Built-in behaviours (no configuration)
-
-These are on by default whenever the editor is editable:
-
-- **Markdown clipboard.** Copy/cut place the selection on the clipboard as
-  Markdown (`text/plain`) *and* rich HTML (`text/html`). Paste accepts either:
-  rich HTML is converted to Markdown, plain text is treated as Markdown — then
-  rendered as blocks, splitting the current block as needed.
-- **Block drag-and-drop.** Hovering a block shows a left-gutter handle
-  (`+` inserts a block below, `⣿` is the drag grip); dragging reorders top-level
-  blocks with a drop-indicator line and a translucent ghost. Give the editor a
-  little left room — the stylesheet reserves a `2.75rem` gutter on `.ew-content`.
-- **Undo/redo** via ⌘/Ctrl+Z and ⌘/Ctrl+Shift+Z (Markdown-snapshot history).
-- **List indent/outdent** with Tab / Shift+Tab; **soft line break** with
-  Shift+Enter.
-
-Disable the toolbar or slash menu with `toolbar: false` / `slashMenu: false`.
-Drag/clipboard/undo are intrinsic to a good editing experience and are always on
-in edit mode.
+- **`value` is "initial + controlled".** An external `value` that differs from
+  the last Markdown the editor emitted re-hydrates the document. Echoing the
+  `onChange` value straight back (the usual controlled pattern) never clobbers
+  the caret while typing.
+- **Options are captured on mount.** `plugins`, `exclude`, `toolbar`,
+  `slashMenu`, etc. are read once when the editor is constructed. To change
+  them, remount the component (e.g. with a different `key`).
+- `onReady(editor)` hands you the underlying `EdodoWrite` instance for
+  imperative calls (`exec`, `undo`, `setReadOnly`, …).
+- `onSelection(info)` mirrors the `selection` event — build your own toolbar
+  from it if you disable the built-in one.
+- `<Markdown value />` renders Markdown read-only with the editor's stylesheet
+  (no plugin extensions — for plugin content, render through `createCodec` or a
+  read-only editor constructed with the same plugins).
 
 ## Functional helpers (no editor instance)
 
-```js
+```ts
 import { toHTML, toMarkdown, renderMarkdown, sanitizeHtml } from "edodo-write";
+import { strict as assert } from "node:assert";
 
-toHTML("# Hi");                 // Markdown → sanitised HTML
-toMarkdown("<h1>Hi</h1>");      // HTML → Markdown
-renderMarkdown(md, targetEl);   // render read-only into an element
-sanitizeHtml(untrustedHtml);    // allow-list sanitiser
+assert.equal(toHTML("# Hi").trim(), "<h1>Hi</h1>");   // Markdown → sanitised HTML
+assert.equal(toMarkdown("<h1>Hi</h1>"), "# Hi");      // HTML → Markdown
+
+const target = document.createElement("div");
+renderMarkdown("**bold** text", target);              // read-only render into an element
+assert.ok(target.innerHTML.includes("<strong>bold</strong>"));
+
+// Allow-list sanitiser: scripts, event handlers and script-scheme URLs go.
+assert.equal(sanitizeHtml('<p onclick="x()">hi<script>evil()</script></p>'), "<p>hi</p>");
 ```
 
-`toHTML(md, { sanitize: false })` returns raw `marked` HTML for a DOM-free,
-trusted-input SSR path.
+`toHTML(md, { sanitize: false })` returns raw `marked` output for a DOM-free,
+trusted-input SSR path. These helpers use the **plain GFM pipeline** — for the
+exact codec of an editor constructed with plugins, build one with `createCodec`
+from `edodo-write/testing`:
+
+```ts
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { highlight } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+const codec = createCodec([highlight()]);
+assertRoundTrip(codec, "some ==highlighted== words"); // throws on divergence
+assert.equal(codec.serialize(codec.parse("==hi==")), "==hi==");
+```
+
+## Plugins
+
+Plugins are plain objects created with `definePlugin({ name, … })` and passed to
+the constructor. They can contribute commands, input rules, keybindings,
+slash/toolbar/block-menu items, paired markdown (marked + turndown) extensions,
+additive sanitizer allowances, a `setup` hook, and event hooks. Collisions
+(duplicate plugin names, command names, item ids) **throw at construction**;
+runtime errors in a plugin are isolated so they never break typing. Plugin
+keybindings (priority 100) run before the core preset (priority 0), so a plugin
+can shadow `Mod-B` — but the structural engine (Enter/Backspace/Tab semantics,
+undo history, the clipboard contract, the sanitizer's denial floor, drag
+mechanics) is deliberately not pluggable.
+
+See the **[Plugin guide](PLUGIN_GUIDE.md)** for the full plugin API, and
+`src/plugins/highlight.ts` for the canonical ~50-line example.
+
+## Built-in behaviours (no configuration)
+
+On by default whenever the editor is editable:
+
+- **Markdown clipboard.** Copy/cut put the selection on the clipboard as
+  Markdown (`text/plain`) *and* rich HTML (`text/html`, regenerated from that
+  Markdown so no editor internals leak into Docs/Word). Paste accepts either:
+  rich HTML is sanitised and converted to Markdown, plain text is treated as
+  Markdown — then parsed and inserted as real blocks, splitting the current
+  block as needed. Pasting a bare URL over a selection turns it into a link.
+- **Block handles.** Hovering a block shows a left-gutter handle: `+` inserts a
+  paragraph below; the `⣿` grip **drags to reorder** (pointer-based, with a
+  drop-indicator line and a translucent ghost) and **clicks to open the block
+  menu** — Turn into (Text, Heading 1–3, lists, To-do, Quote, Code), Duplicate,
+  Copy as Markdown, Delete. The stylesheet reserves a `2.75rem` left gutter on
+  `.ew-content` for the handle.
+- **Link popover.** ⌘/Ctrl+K, the toolbar `🔗` button, or clicking an existing
+  link opens an inline popover to edit, open, or remove the link. Clicking a
+  link never navigates while editing (read-only editors keep native
+  navigation).
+- **Undo/redo.** A Markdown-snapshot history (up to 300 entries) behind
+  ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z and ⌘/Ctrl+Y. Note: states that serialise to
+  identical Markdown collapse into one history entry.
+- **Select-all replace.** Typing or deleting over a select-all resets the
+  document to a single clean paragraph instead of leaving a stale emptied
+  heading (Chrome's native behaviour).
+- **Click below the last block** appends a new paragraph — the content's bottom
+  padding is clickable, Notion-style.
+- **Per-block placeholder.** A focused empty paragraph in a non-empty document
+  shows a "Type “/” for commands…" hint.
+- **Table guards.** Enter on a table escapes to a paragraph below it; Backspace
+  never merges a paragraph into a table (real table editing is not built yet).
+- **Document normaliser.** After every input, native `contentEditable` damage
+  (stray root text nodes, emptied block shells, styled spans) is repaired
+  before input rules run.
+- **⌘/Ctrl+U is swallowed** — Markdown has no underline, so the `<u>` the
+  browser would insert would silently vanish from the serialised value.
+
+Disable the toolbar or slash menu with `toolbar: false` / `slashMenu: false`,
+or remove individual features with `exclude`. Clipboard, drag, undo and the
+normaliser are intrinsic to the editing model and always on in edit mode.
+
+## Read-only
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "Locked.", readOnly: true });
+
+assert.equal(editor.content.getAttribute("contenteditable"), "false");
+assert.equal(editor.exec("bold"), false); // commands are refused
+
+editor.setReadOnly(false);                // fully re-enables editing
+assert.equal(editor.content.getAttribute("contenteditable"), "true");
+editor.destroy();
+```
+
+Read-only hides the toolbar, slash menu and block handles, closes any open
+popovers, refuses commands and checkbox clicks, and restores native link
+navigation. `setReadOnly` works in **both** directions at runtime — the editing
+chrome is constructed unconditionally and gated on the live flag.
 
 ## Styling & theming
 
 The stylesheet is theme-aware:
 
-- Default light; automatic dark via `prefers-color-scheme`.
-- Force a theme with `:root[data-theme="dark"|"light"]` on the document, or a
-  `.ew--dark` / `.ew--light` class on the host.
-- Every color is a CSS variable (`--ew-fg`, `--ew-bg`, `--ew-accent`, …) you can
-  override in your own CSS. The default accent is teal (`--ew-accent`).
+- Light by default; automatic dark via `prefers-color-scheme`.
+- Force a theme with `:root[data-theme="dark"|"light"]` on the document, or an
+  `ew--dark` / `ew--light` class on the host element.
+- Every colour is a CSS variable on `.ew` (`--ew-fg`, `--ew-bg`, `--ew-accent`,
+  `--ew-border`, `--ew-code-bg`, …) that you can override in your own CSS. The
+  reading width is `--ew-content-width` (default `46rem`).
+- `.ew-content` reserves a `2.75rem` left gutter for the block handles and tall
+  bottom padding for click-to-append; the read-only variant drops the gutter.

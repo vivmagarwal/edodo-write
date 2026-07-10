@@ -1,20 +1,26 @@
 /**
  * Keyboard handling.
  *
- * Enter and Backspace are intercepted so the block model stays clean and the
- * feel matches Notion. contentEditable's defaults are unreliable here — e.g.
- * Enter at the end of a heading inserts a stray `<div>` in Chrome — so we do
- * the splits/merges ourselves and always emit proper block elements
- * (`<p>`, `<h1>`, `<li>`, `<blockquote>`), never a `<div>`.
+ * Two tiers:
+ *   1. REGISTERED BINDINGS (core preset + plugins, priority-ordered): Mod-b,
+ *      Mod-Shift-8, a plugin's Mod-Shift-H, … — data, fully pluggable.
+ *   2. THE ENGINE (this module, not pluggable): Enter/Backspace/Tab structural
+ *      semantics, undo/redo routing, and the Mod-U underline swallow. These
+ *      keep the block model clean — contentEditable's defaults are unreliable
+ *      here (e.g. Enter at the end of a heading inserts a stray `<div>` in
+ *      Chrome), so we do the splits/merges ourselves and always emit proper
+ *      block elements (`<p>`, `<h1>`, `<li>`, `<blockquote>`), never a `<div>`.
+ *      Plugins can PRE-EMPT engine keys (a binding for "Enter" runs first) but
+ *      never remove them.
  *
  * Semantics (verified against Notion, adapted to CommonMark):
  *   • Enter at end of / inside a heading → the new block is a paragraph.
  *   • Enter in a list item splits it; Enter in an EMPTY item exits the list.
- *   • Enter in a code block inserts a newline.
+ *   • Enter in a code block inserts a newline; on a table it escapes below.
  *   • Backspace at the start of a heading/quote → convert to paragraph.
  *   • Backspace at the start of a list item → outdent to a paragraph.
  *   • Backspace at the start of a paragraph → merge into the previous block
- *     (deleting a preceding divider outright).
+ *     (deleting a preceding divider outright; never merging into a table).
  */
 
 import {
@@ -22,11 +28,10 @@ import {
   placeCaretAtStart, placeCaretAfter, ensureNotEmpty,
 } from "./dom.js";
 import { makeTaskItem } from "./commands.js";
-import type { Command } from "./types.js";
+import { guard, matchesKey, type ResolvedKeyBinding } from "./plugin.js";
+import type { EditorContext } from "./types.js";
 
 export interface KeymapHandlers {
-  exec: (cmd: Command) => void;
-  onLink: () => void;
   notify: () => void;
   undo: () => void;
   redo: () => void;
@@ -35,20 +40,35 @@ export interface KeymapHandlers {
 const ZWSP = String.fromCharCode(0x200b);
 
 /** Returns true when the event was handled (caller should not do more). */
-export function handleKeydown(root: HTMLElement, e: KeyboardEvent, h: KeymapHandlers): boolean {
-  const mod = e.metaKey || e.ctrlKey;
+export function handleKeydown(
+  root: HTMLElement,
+  e: KeyboardEvent,
+  h: KeymapHandlers,
+  bindings: ResolvedKeyBinding[],
+  ctx: EditorContext,
+): boolean {
+  // Tier 1: registered bindings, priority-ordered; first one that acts wins.
+  for (const b of bindings) {
+    if (!matchesKey(b.descriptor, e)) continue;
+    const handled = guard(b.plugin, "keymap", () => {
+      if (typeof b.binding === "string") return ctx.exec(b.binding as string);
+      return b.binding(ctx, e);
+    });
+    if (handled) {
+      e.preventDefault();
+      return true;
+    }
+  }
 
+  // Tier 2: the engine.
+  const mod = e.metaKey || e.ctrlKey;
   if (mod && !e.altKey) {
     const k = e.key.toLowerCase();
     if (k === "z" && !e.shiftKey) { e.preventDefault(); h.undo(); return true; }
     if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); h.redo(); return true; }
-    if (k === "b") { e.preventDefault(); h.exec("bold"); return true; }
-    if (k === "i") { e.preventDefault(); h.exec("italic"); return true; }
-    if (k === "k") { e.preventDefault(); h.onLink(); return true; }
-    if (e.shiftKey && k === "7") { e.preventDefault(); h.exec("orderedList"); return true; }
-    if (e.shiftKey && k === "8") { e.preventDefault(); h.exec("bulletList"); return true; }
-    if (e.shiftKey && k === "9") { e.preventDefault(); h.exec("taskList"); return true; }
-    if (e.shiftKey && k === "e") { e.preventDefault(); h.exec("code"); return true; }
+    // Swallow the browser's native underline — Markdown has no underline, so
+    // the <u> it inserts would silently vanish from the serialized value.
+    if (k === "u" && !e.shiftKey) { e.preventDefault(); return true; }
   }
 
   if (e.key === "Enter" && !e.shiftKey) {
@@ -74,7 +94,17 @@ function handleEnter(root: HTMLElement): boolean {
   if (!block) return false;
 
   if (block.tagName === "PRE") {
-    insertText("\n");
+    insertCodeNewline();
+    return true;
+  }
+
+  // Splitting a <table> would clone the table element itself — corruption.
+  // Until real table editing lands, Enter escapes to a paragraph below.
+  if (block.tagName === "TABLE") {
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    block.after(p);
+    placeCaretAtStart(p);
     return true;
   }
 
@@ -164,7 +194,7 @@ function isEmptyItem(li: HTMLElement): boolean {
 function insertSoftBreak(root: HTMLElement): boolean {
   const block = currentBlock(root);
   if (!block) return false;
-  if (block.tagName === "PRE") { insertText("\n"); return true; }
+  if (block.tagName === "PRE") { insertCodeNewline(); return true; }
   const range = getRange();
   if (!range) return false;
   range.deleteContents();
@@ -197,7 +227,7 @@ function handleBackspace(root: HTMLElement): boolean {
     convertToParagraph(block);
     return true;
   }
-  if (block.tagName === "PRE" && (block.textContent ?? "").trim() === "") {
+  if (block.tagName === "PRE" && (block.textContent ?? "").split(ZWSP).join("").trim() === "") {
     convertToParagraph(block);
     return true;
   }
@@ -235,13 +265,23 @@ function outdentOrUnlist(root: HTMLElement, li: HTMLElement): void {
     placeCaretAtStart(li);
     return;
   }
-  // Top level: turn the item into a paragraph placed after the list.
+  // Top level: turn the item into a paragraph IN PLACE — items before it stay
+  // in this list, items after it move to a new list following the paragraph
+  // (splitting a middle item must not reorder the document).
   const p = document.createElement("p");
   li.querySelector(':scope > input[type="checkbox"]')?.remove();
   while (li.firstChild) p.appendChild(li.firstChild);
   ensureNotEmpty(p);
+  const following: Element[] = [];
+  for (let sib = li.nextElementSibling; sib; sib = sib.nextElementSibling) following.push(sib);
   li.remove();
   list.after(p);
+  if (following.length) {
+    const tail = document.createElement(list.tagName.toLowerCase());
+    if (list.classList.contains("contains-task-list")) tail.classList.add("contains-task-list");
+    following.forEach((item) => tail.appendChild(item));
+    p.after(tail);
+  }
   if (!list.querySelector("li")) list.remove();
   placeCaretAtStart(p);
 }
@@ -250,7 +290,8 @@ function mergeWithPrevious(block: HTMLElement): boolean {
   const prev = block.previousElementSibling as HTMLElement | null;
   if (!prev) return false;
   if (prev.tagName === "HR") { prev.remove(); return true; }
-  if (prev.tagName === "PRE") return false; // don't fold prose into code
+  if (prev.tagName === "PRE") return false;   // don't fold prose into code
+  if (prev.tagName === "TABLE") return true;  // never fold prose into a table (consume, no-op)
 
   let target: HTMLElement = prev;
   if (/^(UL|OL)$/.test(prev.tagName)) {
@@ -295,11 +336,24 @@ function handleTab(root: HTMLElement, shift: boolean): boolean {
   return true;
 }
 
-function insertText(text: string): void {
+/**
+ * A newline inside a code block. A trailing "\n" at the end of a <pre> is a
+ * line TERMINATOR to the browser, not a new line — Chrome types the next
+ * character before it. Inserting "\n" + a zero-width space (stripped on
+ * serialize) makes the new line real and the caret placeable on it.
+ */
+export function insertCodeNewline(): void {
   const range = getRange();
   if (!range) return;
   range.deleteContents();
-  const tn = document.createTextNode(text);
+  const tn = document.createTextNode("\n" + ZWSP);
   range.insertNode(tn);
-  placeCaretAfter(tn);
+  const sel = getSelection();
+  if (sel) {
+    const r = document.createRange();
+    r.setStart(tn, 1); // between the newline and the ZWSP
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
 }

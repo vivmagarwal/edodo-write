@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { EdodoWriteEditor } from "../lib/react.js";
+import { highlight, callout } from "../plugins/index.js";
 import { EXAMPLES } from "./examples.js";
+
+// Plugins are captured when the editor mounts; the editor remounts (via key)
+// on every example switch, so one shared instance list is fine.
+const PLUGINS = [highlight(), callout()];
 
 type Theme = "light" | "dark" | "system";
 
@@ -69,6 +74,7 @@ export function Site() {
               key={activeExample}
               value={markdown}
               onChange={setMarkdown}
+              plugins={PLUGINS}
               autofocus
               ariaLabel="Demo editor"
             />

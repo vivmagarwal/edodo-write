@@ -14,16 +14,43 @@ A **Notion / Medium**-style editor whose single source of truth is _Markdown_.
 
 Try it:
 
-- Type \`## \` at the start of a line for a heading
-- Type \`- \` for a bullet, \`1. \` for a number, \`[ ] \` for a to-do
+- Type \`## \` for a heading, \`- \` for a bullet, \`1. \` for a number, \`[ ] \` for a to-do
 - Type \`> \` for a quote, \`\`\`\` for a code block, \`--- \` for a divider
-- Select some text to get a **floating toolbar**
-- On an empty line, press \`/\` for the **slash menu**
-- **Hover** a block, then drag the \`⣿\` grip to reorder it
+- On an empty line, press \`/\` — the menu has group headers and accepts spaces (\`/heading 1\` works)
+- Select some text for the **floating toolbar**; \`⌘/Ctrl+K\` opens the **link popover** (click any link to edit it)
+- **Hover** a block: drag the \`⣿\` grip to reorder, or **click** it for Turn into, Duplicate, Copy as Markdown, Delete
+- Type \`==text==\` to ==highlight== it, or \`> [!note] \` for a callout — both from \`edodo-write/plugins\`
 - **Paste** Markdown and it renders as blocks; **copy** and you get Markdown back
-- \`⌘/Ctrl+Z\` to undo, \`Tab\`/\`Shift+Tab\` to indent lists
+- Click **below the last block** to start a new paragraph; select-all then type replaces the whole document
+- \`⌘/Ctrl+Z\` undo, \`⌘/Ctrl+⇧Z\` redo, \`Tab\`/\`Shift+Tab\` to indent lists
 
 Everything you write round-trips to clean Markdown — watch the panel on the right.`,
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    markdown: `# Plugins
+
+This demo registers the two first-party plugins from \`edodo-write/plugins\`:
+
+\`\`\`js
+import { highlight, callout } from "edodo-write/plugins";
+new EdodoWrite(host, { plugins: [highlight(), callout()] });
+\`\`\`
+
+## Highlight
+
+Wrap text in double equals to ==highlight== it. Or select some text and press \`⌘/Ctrl+⇧H\` — the floating toolbar gains an **H** button too. It serialises as \`==text==\`.
+
+## Callout
+
+> [!NOTE]
+> Callouts are stored as GitHub alert syntax, so this block renders natively on GitHub and degrades to a plain quote everywhere else.
+
+> [!WARNING]
+> Type \`> \` then \`[!warning] \` to make one, or pick **Callout** from the slash menu.
+
+Both are ordinary plugins built on the public API — check the Markdown panel to see exactly what they store.`,
   },
   {
     id: "formatting",

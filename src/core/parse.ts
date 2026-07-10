@@ -5,12 +5,15 @@
  * to the editor's tag/attribute allow-list. Task lists are decorated with the
  * conventional `contains-task-list` / `task-list-item` classes so CSS can style
  * them and the editor can find the checkboxes.
+ *
+ * Instancing: each parser owns a `new Marked()` — never the global `marked`
+ * singleton, whose options/extensions would leak into every other consumer of
+ * marked on the page. `createMarkdownParser` accepts plugin extensions;
+ * `parseMarkdown` stays bound to a default instance.
  */
 
-import { marked } from "marked";
-import { sanitizeHtml } from "./sanitize.js";
-
-marked.setOptions({ gfm: true, breaks: false });
+import { Marked, type MarkedExtension } from "marked";
+import { sanitizeHtml, type SanitizeOptions } from "./sanitize.js";
 
 export interface ParseOptions {
   /**
@@ -20,13 +23,36 @@ export interface ParseOptions {
    * Default: true.
    */
   sanitize?: boolean;
+  /**
+   * Make task-list checkboxes interactive (editor classes + enabled inputs).
+   * Set `false` for export paths (e.g. the clipboard's HTML flavor) where
+   * GFM's native disabled checkboxes are the right semantics. Default: true.
+   */
+  decorateTasks?: boolean;
 }
 
-/** Convert a Markdown string to HTML. */
+export function createMarkdownParser(
+  extensions: MarkedExtension[] = [],
+  sanitizeOptions?: SanitizeOptions,
+): (md: string, opts?: ParseOptions) => string {
+  const marked = new Marked({ gfm: true, breaks: false });
+  for (const ext of extensions) marked.use(ext);
+  return (md: string, opts: ParseOptions = {}) => {
+    const raw = String(marked.parse(md ?? "", { async: false }));
+    if (opts.sanitize === false || typeof DOMParser === "undefined") return raw;
+    const clean = sanitizeHtml(raw, sanitizeOptions);
+    return opts.decorateTasks === false ? clean : decorateTaskLists(clean);
+  };
+}
+
+const defaultParse = (() => {
+  let fn: ((md: string, opts?: ParseOptions) => string) | null = null;
+  return (md: string, opts?: ParseOptions) => (fn ??= createMarkdownParser())(md, opts);
+})();
+
+/** Convert a Markdown string to HTML (default parser, no extensions). */
 export function parseMarkdown(md: string, opts: ParseOptions = {}): string {
-  const raw = String(marked.parse(md ?? "", { async: false }));
-  if (opts.sanitize === false || typeof DOMParser === "undefined") return raw;
-  return decorateTaskLists(sanitizeHtml(raw));
+  return defaultParse(md, opts);
 }
 
 /**

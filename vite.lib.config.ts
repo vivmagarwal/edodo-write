@@ -23,6 +23,8 @@ export default defineConfig({
       entry: {
         index: fileURLToPath(new URL("./src/lib/index.ts", import.meta.url)),
         react: fileURLToPath(new URL("./src/lib/react.tsx", import.meta.url)),
+        plugins: fileURLToPath(new URL("./src/plugins/index.ts", import.meta.url)),
+        testing: fileURLToPath(new URL("./src/lib/testing.ts", import.meta.url)),
       },
       formats: ["es"],
     },

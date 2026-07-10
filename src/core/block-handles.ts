@@ -13,6 +13,9 @@ export interface BlockHandlesDeps {
   onChange: () => void;
   /** Insert an empty paragraph after `block` and focus it. */
   onInsertAfter: (block: HTMLElement) => void;
+  /** A grip CLICK (pointer went down and up without dragging): open the
+   *  block menu for `block`, anchored to the handle. */
+  onMenu: (block: HTMLElement, anchor: HTMLElement) => void;
 }
 
 export class BlockHandles {
@@ -23,6 +26,7 @@ export class BlockHandles {
   private ghost: HTMLElement | null = null;
   private dropBefore: HTMLElement | null = null;
   private raf = 0;
+  private enabled = true;
 
   private onRootMove = (e: MouseEvent) => this.trackHover(e);
   private onRootLeave = () => { if (!this.dragging) this.hide(); };
@@ -35,7 +39,7 @@ export class BlockHandles {
     this.handle.contentEditable = "false";
     this.handle.innerHTML =
       '<button type="button" class="ew-bh-add" title="Insert block below" aria-label="Insert block below">+</button>' +
-      '<button type="button" class="ew-bh-drag" title="Drag to move" aria-label="Drag to move">⣿</button>';
+      '<button type="button" class="ew-bh-drag" title="Drag to move, click for menu" aria-label="Drag to move, click for menu">⣿</button>';
     this.handle.style.display = "none";
 
     this.line = document.createElement("div");
@@ -58,9 +62,19 @@ export class BlockHandles {
     this.handle.addEventListener("mouseenter", () => { if (this.raf) cancelAnimationFrame(this.raf); });
   }
 
+  /** Read-only support: disabling hides the gutter and inert-s hover + drag. */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.hide();
+      if (this.dragging) this.dragEnd(new PointerEvent("pointerup"));
+    }
+  }
+
   // ── Hover tracking ─────────────────────────────────────────────────────────
 
   private trackHover(e: MouseEvent): void {
+    if (!this.enabled) return;
     if (this.dragging) return;
     if (this.raf) return;
     this.raf = requestAnimationFrame(() => {
@@ -97,9 +111,12 @@ export class BlockHandles {
   // ── Drag ─────────────────────────────────────────────────────────────────
 
   private dragStart(e: PointerEvent): void {
-    if (!this.hovered) return;
+    if (!this.enabled || !this.hovered) return;
     e.preventDefault();
     this.dragging = this.hovered;
+    this.moved = false;
+    this.startX = e.clientX;
+    this.startY = e.clientY;
     this.dragging.classList.add("ew-block-dragging");
     document.body.classList.add("ew-dragging-active");
 
@@ -109,6 +126,7 @@ export class BlockHandles {
     this.ghost.style.width = `${rect.width}px`;
     this.ghost.style.left = `${rect.left}px`;
     this.ghost.style.top = `${rect.top}px`;
+    this.ghost.style.display = "none"; // revealed on first real movement
     document.body.appendChild(this.ghost);
     this.ghostOffsetY = e.clientY - rect.top;
 
@@ -117,11 +135,19 @@ export class BlockHandles {
   }
 
   private ghostOffsetY = 0;
+  private moved = false;
+  private startX = 0;
+  private startY = 0;
 
   private dragMove(e: PointerEvent): void {
     if (!this.dragging) return;
     e.preventDefault();
+    if (!this.moved && Math.hypot(e.clientX - this.startX, e.clientY - this.startY) < 4) {
+      return; // still a click, not a drag
+    }
+    this.moved = true;
     if (this.ghost) {
+      this.ghost.style.display = "";
       this.ghost.style.top = `${e.clientY - this.ghostOffsetY}px`;
     }
     const y = e.clientY;
@@ -161,6 +187,13 @@ export class BlockHandles {
     this.ghost = null;
     if (dragging) {
       dragging.classList.remove("ew-block-dragging");
+      if (!this.moved) {
+        // Pointer never moved: this was a CLICK on the grip → block menu.
+        this.dragging = null;
+        this.dropBefore = null;
+        this.deps.onMenu(dragging, this.handle);
+        return;
+      }
       const before = this.dropBefore;
       if (before !== dragging) {
         if (before) this.root.insertBefore(dragging, before);

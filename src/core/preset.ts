@@ -1,0 +1,198 @@
+/**
+ * The core preset — every built-in feature, expressed through the SAME plugin
+ * API third parties use. This is deliberate dogfooding: the registry code path
+ * runs on every keystroke of every user, so it cannot bit-rot, and this file
+ * is living documentation of the API.
+ *
+ * Remove pieces with `new EdodoWrite(host, { exclude: ["taskList", …] })`.
+ * The structural editing engine (Enter/Backspace/Tab, history, clipboard,
+ * sanitizer floor) is NOT here — see keymap.ts / editor.ts — because those
+ * are invariants, not features.
+ */
+
+import type { EdodoPlugin, EditorContext } from "./types.js";
+import { coreCommands } from "./commands.js";
+import { openLinkEditor } from "./link-ui.js";
+import { buildFieldForm } from "./ui.js";
+import type { EditorUIImpl } from "./ui.js";
+import { placeCaretAtStart, placeCaretAtEnd, selectionRect, currentBlock } from "./dom.js";
+
+/** Turn the hovered block into `cmd`. The caret is already inside the block
+ *  (the block menu places it before running items), so exec targets it. */
+function turnInto(id: string, title: string, cmd: string): NonNullable<EdodoPlugin["blockMenuItems"]>[number] {
+  return {
+    id: `turn-${id}`,
+    title,
+    group: "Turn into",
+    run: (ctx, block) => {
+      placeCaretAtStart(block);
+      ctx.exec(cmd as string);
+    },
+  };
+}
+
+function openImageForm(ctx: EditorContext): void {
+  const anchor = selectionRect() ?? currentBlock(ctx.root)?.getBoundingClientRect();
+  if (!anchor) return;
+  const ui = ctx.ui as EditorUIImpl;
+  ctx.ui.popover({
+    anchor,
+    placement: "below",
+    render(el, close) {
+      buildFieldForm(el, {
+        fields: [
+          { name: "src", label: "Image URL", placeholder: "https://…/image.png" },
+          { name: "alt", label: "Alt text", placeholder: "Describe the image (alt text)" },
+        ],
+        submitLabel: "Insert image",
+        onSubmit(values) {
+          close();
+          if (!values.src) return;
+          ui.restoreSelection();
+          ctx.exec("image", { src: values.src, alt: values.alt || undefined });
+        },
+      });
+    },
+  });
+}
+
+export function corePreset(): EdodoPlugin {
+  return {
+    name: "core",
+    priority: 0,
+    commands: coreCommands,
+
+    inputRules: [
+      // Block rules — `apply: command` inherits the convert-first → strip →
+      // re-anchor sequence (see input-rules.ts).
+      { kind: "block", trigger: /^# $/, apply: "heading1" },
+      { kind: "block", trigger: /^## $/, apply: "heading2" },
+      { kind: "block", trigger: /^### $/, apply: "heading3" },
+      { kind: "block", trigger: /^#### $/, apply: "heading4" },
+      { kind: "block", trigger: /^##### $/, apply: "heading5" },
+      { kind: "block", trigger: /^###### $/, apply: "heading6" },
+      { kind: "block", trigger: /^> $/, apply: "blockquote" },
+      { kind: "block", trigger: /^[-*] $/, apply: "bulletList" },
+      { kind: "block", trigger: /^\d+\. $/, apply: "orderedList" },
+      { kind: "block", trigger: /^\[[ xX]?\] $/, apply: "taskList" },
+      {
+        // Fenced code: the block must be EMPTIED first — toggleCodeBlock
+        // copies the block text into the <code>, and "``` " must not ride in.
+        // The trailing space is REQUIRED (it is the trigger).
+        kind: "block",
+        trigger: /^``` $/,
+        apply: (ctx, m, block) => {
+          ctx.dom.deleteLeadingChars(block, m[0].length);
+          ctx.exec("codeBlock");
+          return true;
+        },
+      },
+      {
+        // Divider: same delete-first ordering — insertDivider removes the
+        // current block only when it is already empty.
+        kind: "block",
+        trigger: /^(-{3}|_{3}|\*{3}) $/,
+        apply: (ctx, m, block) => {
+          ctx.dom.deleteLeadingChars(block, m[0].length);
+          ctx.exec("divider");
+          return true;
+        },
+      },
+      // Inline rules — the lookbehinds keep guard chars out of the match.
+      { kind: "inline", trigger: /\*\*([^*\n]+)\*\*$/, apply: "strong" },
+      { kind: "inline", trigger: /~~([^~\n]+)~~$/, apply: "del" },
+      { kind: "inline", trigger: /`([^`\n]+)`$/, apply: "code" },
+      { kind: "inline", trigger: /(?<![*\\])\*([^*\n]+)\*$/, apply: "em" },
+      { kind: "inline", trigger: /(?<![_\w])_([^_\n]+)_$/, apply: "em" },
+    ],
+
+    keymap: {
+      "Mod-b": "bold",
+      "Mod-i": "italic",
+      "Mod-Shift-e": "code",
+      "Mod-Shift-7": "orderedList",
+      "Mod-Shift-8": "bulletList",
+      "Mod-Shift-9": "taskList",
+      "Mod-k": (ctx) => openLinkEditor(ctx),
+    },
+
+    slashItems: [
+      { id: "paragraph", title: "Text", hint: "Plain paragraph", keywords: ["text", "paragraph", "body"], group: "Basic blocks", command: "paragraph" },
+      { id: "heading1", title: "Heading 1", hint: "Large section title", keywords: ["h1", "heading", "title", "big"], group: "Basic blocks", command: "heading1" },
+      { id: "heading2", title: "Heading 2", hint: "Medium heading", keywords: ["h2", "heading", "subtitle"], group: "Basic blocks", command: "heading2" },
+      { id: "heading3", title: "Heading 3", hint: "Small heading", keywords: ["h3", "heading"], group: "Basic blocks", command: "heading3" },
+      { id: "bulletList", title: "Bulleted list", hint: "A simple bullet list", keywords: ["bullet", "unordered", "ul", "list"], group: "Basic blocks", command: "bulletList" },
+      { id: "orderedList", title: "Numbered list", hint: "A numbered list", keywords: ["number", "ordered", "ol", "list"], group: "Basic blocks", command: "orderedList" },
+      { id: "taskList", title: "To-do list", hint: "Track tasks with checkboxes", keywords: ["todo", "task", "check", "checkbox"], group: "Basic blocks", command: "taskList" },
+      { id: "blockquote", title: "Quote", hint: "Capture a quote", keywords: ["quote", "blockquote", "cite"], group: "Basic blocks", command: "blockquote" },
+      { id: "codeBlock", title: "Code", hint: "Fenced code block", keywords: ["code", "pre", "fence", "snippet"], group: "Basic blocks", command: "codeBlock" },
+      { id: "divider", title: "Divider", hint: "Visual separator", keywords: ["divider", "hr", "rule", "line", "separator"], group: "Basic blocks", command: "divider" },
+      { id: "image", title: "Image", hint: "Embed from a URL", keywords: ["image", "img", "picture", "photo", "media"], group: "Media", run: openImageForm },
+      { id: "heading4", title: "Heading 4", hint: "Sub-sub heading", keywords: ["h4", "heading"], group: "Advanced", command: "heading4" },
+      { id: "heading5", title: "Heading 5", hint: "Rarely needed", keywords: ["h5", "heading"], group: "Advanced", command: "heading5" },
+      { id: "heading6", title: "Heading 6", hint: "The smallest heading", keywords: ["h6", "heading"], group: "Advanced", command: "heading6" },
+    ],
+
+    toolbarItems: [
+      { id: "bold", label: "B", title: "Bold  (⌘B)", command: "bold" },
+      { id: "italic", label: "I", title: "Italic  (⌘I)", command: "italic" },
+      { id: "strike", label: "S", title: "Strikethrough", command: "strike" },
+      { id: "code", label: "</>", title: "Inline code", command: "code" },
+      { id: "link", label: "🔗", title: "Link  (⌘K)", run: (ctx) => { openLinkEditor(ctx); } },
+      { id: "heading1", label: "H1", title: "Heading 1", command: "heading1" },
+      { id: "heading2", label: "H2", title: "Heading 2", command: "heading2" },
+      { id: "blockquote", label: "❝", title: "Quote", command: "blockquote" },
+    ],
+
+    blockMenuItems: [
+      turnInto("paragraph", "Text", "paragraph"),
+      turnInto("heading1", "Heading 1", "heading1"),
+      turnInto("heading2", "Heading 2", "heading2"),
+      turnInto("heading3", "Heading 3", "heading3"),
+      turnInto("bulletList", "Bulleted list", "bulletList"),
+      turnInto("orderedList", "Numbered list", "orderedList"),
+      turnInto("taskList", "To-do list", "taskList"),
+      turnInto("blockquote", "Quote", "blockquote"),
+      turnInto("codeBlock", "Code", "codeBlock"),
+      {
+        id: "duplicate",
+        title: "Duplicate",
+        group: "Actions",
+        run: (ctx, block) => {
+          // Round-trip the block through Markdown so the copy is exactly what
+          // would be stored — never a raw DOM clone with editor internals.
+          const md = ctx.markdown.serialize(block.outerHTML);
+          const holder = document.createElement("div");
+          holder.innerHTML = ctx.markdown.parse(md);
+          const clone = holder.firstElementChild as HTMLElement | null;
+          if (!clone) return;
+          block.after(clone);
+          placeCaretAtEnd(clone);
+        },
+      },
+      {
+        id: "copy-markdown",
+        title: "Copy as Markdown",
+        group: "Actions",
+        run: (ctx, block) => {
+          const md = ctx.markdown.serialize(block.outerHTML);
+          void navigator.clipboard?.writeText(md).then(
+            () => ctx.ui.notify("Copied as Markdown"),
+            () => ctx.ui.notify("Copy failed"),
+          );
+        },
+      },
+      {
+        id: "delete",
+        title: "Delete",
+        group: "Actions",
+        danger: true,
+        run: (ctx, block) => {
+          const next = (block.nextElementSibling ?? block.previousElementSibling) as HTMLElement | null;
+          block.remove();
+          if (next) placeCaretAtStart(next);
+        },
+      },
+    ],
+  };
+}

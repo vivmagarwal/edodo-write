@@ -1,8 +1,8 @@
 {
   "name": "edodo-write",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
+  "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar \u2014 framework-agnostic core with an optional React wrapper.",
   "license": "MIT",
   "author": "vivmagarwal",
   "homepage": "https://vivmagarwal.github.io/edodo-write/",
@@ -37,6 +37,14 @@
       "types": "./dist-lib/lib/react.d.ts",
       "import": "./dist-lib/react.js"
     },
+    "./plugins": {
+      "types": "./dist-lib/plugins/index.d.ts",
+      "import": "./dist-lib/plugins.js"
+    },
+    "./testing": {
+      "types": "./dist-lib/lib/testing.d.ts",
+      "import": "./dist-lib/testing.js"
+    },
     "./styles.css": "./dist-lib/edodo-write.css",
     "./package.json": "./package.json"
   },
@@ -60,7 +68,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build:pkg"
+    "prepublishOnly": "npm run build:pkg",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@joplin/turndown-plugin-gfm": "^1.0.61",
@@ -80,6 +89,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
@@ -91,5 +101,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^2.1.8"
-  }
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
 }
