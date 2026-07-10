@@ -29,8 +29,17 @@ friendly.
   blocks, dividers, and inline `**bold**` `*italic*` `` `code` `` `~~strike~~`.
 - **Floating selection toolbar** (Medium-style) and a **`/` slash menu**
   (Notion-style).
+- **Block drag-and-drop** — hover a block, drag the `⣿` grip to reorder (with a
+  drop-indicator line and a live ghost).
+- **Markdown clipboard** — copy → Markdown on your clipboard; paste Markdown (or
+  rich HTML) → rendered blocks.
+- **Undo / redo** — a Markdown-snapshot history (⌘/Ctrl+Z), consistent across
+  every operation.
+- **Robust editing** — Enter/Backspace/Tab do the right, Notion-like thing and
+  always keep the block model clean.
 - **Interactive task lists** — tick a checkbox, the Markdown flips `[ ]` → `[x]`.
-- **Clean GFM output** — tables, strikethrough, task lists. Round-trip-stable.
+- **Clean GFM output** — tables, strikethrough, task lists; special characters
+  are escaped so prose like `<script>` or `a<b>c` round-trips. Round-trip-stable.
 - **Light & dark** themes via CSS variables.
 - **Tiny** — 3 runtime deps (`marked`, `turndown`, the turndown GFM plugin).
   React is an optional peer.
@@ -75,11 +84,13 @@ npm test        # Vitest
 
 ## Docs
 
-- **[Getting started](docs/GETTING_STARTED.md)**
-- **[Embed in your app (API)](docs/INTEGRATION_GUIDE.md)**
-- **[Markdown support & shortcuts](docs/MARKDOWN_AND_SHORTCUTS.md)**
-- **[Architecture](docs/ARCHITECTURE.md)**
-- **[Extending](docs/EXTENDING_GUIDE.md)**
+- **[Getting started](docs/GETTING_STARTED.md)** — install + first editor
+- **[Embed in your app (API)](docs/INTEGRATION_GUIDE.md)** — full API
+- **[Markdown support & shortcuts](docs/MARKDOWN_AND_SHORTCUTS.md)** — what you can type
+- **[Architecture](docs/ARCHITECTURE.md)** — how it works
+- **[Development guide](docs/DEVELOPMENT.md)** — start here if you're contributing
+- **[Extending](docs/EXTENDING_GUIDE.md)** — add rules/commands/blocks
+- **[Notion UX study](docs/NOTION_UX_STUDY.md)** — the behavioural spec
 
 Live site: **https://vivmagarwal.github.io/edodo-write/**
 

@@ -38,11 +38,16 @@ Built ground-up over native `contentEditable`; 3 runtime deps (`marked`,
 
 ## Fast orientation
 
-- Pipeline + module table + decisions: `docs/ARCHITECTURE.md`.
+- **New here? Read `docs/DEVELOPMENT.md` first** (layout, dev loop, the
+  contentEditable rules, testing, release).
+- Pipeline + module table + decisions: `docs/ARCHITECTURE.md`. Behavioural spec
+  vs Notion: `docs/NOTION_UX_STUDY.md`.
 - Public API: `docs/INTEGRATION_GUIDE.md`. What you can type:
   `docs/MARKDOWN_AND_SHORTCUTS.md`.
-- Orchestrator: `src/core/editor.ts`. Transforms: `src/core/commands.ts`.
-  Type-to-format: `src/core/input-rules.ts`.
+- Orchestrator + undo history: `src/core/editor.ts`. Transforms:
+  `src/core/commands.ts`. Type-to-format: `src/core/input-rules.ts`.
+  Enter/Backspace/Tab: `src/core/keymap.ts`. Clipboard: `src/core/clipboard.ts`.
+  Drag: `src/core/block-handles.ts`. Shared DOM: `src/core/dom.ts`.
 - Build: `vite.lib.config.ts` (→ `dist-lib/`, published) + `vite.config.ts`
   (→ `dist/`, GitHub Pages). Publish via `scripts/publish.sh` (token from
   `../edodo-draw/.env`). Deploy the site via `scripts/deploy-pages.sh`.

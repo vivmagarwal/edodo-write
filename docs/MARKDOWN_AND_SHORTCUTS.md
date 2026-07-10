@@ -52,8 +52,24 @@ Link, Heading 1/2 and Quote.
 | `⌘/Ctrl + Shift + 8` | Bulleted list |
 | `⌘/Ctrl + Shift + 7` | Numbered list |
 | `⌘/Ctrl + Shift + 9` | To-do list |
-| `Enter` (in code block) | New line (not a new block) |
-| `Backspace` (start of empty heading/quote/code) | Back to paragraph |
+| `⌘/Ctrl + Z` | Undo |
+| `⌘/Ctrl + Shift + Z` / `⌘/Ctrl + Y` | Redo |
+| `Tab` / `Shift + Tab` | Indent / outdent a list item |
+| `Shift + Enter` | Soft line break within a block |
+| `Enter` (at end of a heading) | New paragraph (not another heading) |
+| `Enter` (in an empty list item) | Exit the list |
+| `Enter` (in a code block) | New line (not a new block) |
+| `Backspace` (start of heading/quote) | Convert to paragraph |
+| `Backspace` (start of paragraph) | Merge into the previous block |
+
+## Copy, paste & drag
+
+- **Copy / cut** put the selection on the clipboard as **Markdown** (and rich
+  HTML), so pasting into any text field yields Markdown and pasting into Docs/
+  Word yields formatting.
+- **Paste** parses Markdown (or converts pasted rich HTML to Markdown) and
+  inserts it as real blocks — splitting the current block where needed.
+- **Drag** a block by the `⣿` grip in the hover gutter to reorder it.
 
 ## Serialised Markdown
 

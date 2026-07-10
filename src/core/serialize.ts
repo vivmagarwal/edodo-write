@@ -23,6 +23,19 @@ function createService(): TurndownService {
   });
   td.use(gfm);
 
+  // Escape `<` in prose. Turndown's default escaper leaves it alone, so text
+  // like "if a<b>c" or a literal "<script>" would be re-parsed as raw HTML (and
+  // stripped by the sanitiser). Escaping the tag-opener keeps such text literal
+  // while never affecting real markup (which turndown emits via its own rules,
+  // not through escape()).
+  const baseEscape = td.escape.bind(td);
+  td.escape = (str: string) =>
+    baseEscape(str)
+      .replace(/</g, "\\<")
+      // Only an `&` that already forms an entity would be re-parsed; keep plain
+      // ampersands ("Tom & Jerry") untouched.
+      .replace(/&(?=[a-zA-Z][a-zA-Z0-9]*;|#\d+;|#x[0-9a-fA-F]+;)/g, "&amp;");
+
   // Drop empty paragraphs that `contentEditable` leaves behind (e.g. a bare
   // `<p><br></p>` at the end of the document) so the Markdown stays tidy.
   td.addRule("stripEmptyParagraphs", {

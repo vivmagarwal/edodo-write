@@ -3,11 +3,11 @@
  *
  *   const editor = new EdodoWrite(el, { value: "# Hello", onChange: md => … });
  *
- * It mounts a `contentEditable` surface, seeds it from Markdown, and keeps
- * Markdown as the source of truth: every edit re-serialises the DOM back to
- * Markdown (`getMarkdown()`), and `setMarkdown()` re-hydrates it. Type-to-format
- * input rules, a floating toolbar, and a slash menu provide the Notion/Medium
- * feel. React is never imported here.
+ * The mental model (the user's "façade over Markdown"): the contentEditable
+ * surface is the *view*, Markdown is the *state*, and parse/serialize is the
+ * reconciler. Every edit re-serialises the view to Markdown (`getMarkdown()`);
+ * `setMarkdown()` re-hydrates the view. Undo/redo is a stack of Markdown
+ * snapshots — undo literally restores previous state. React is never imported.
  */
 
 import type { Command, EditorEventName, EditorEvents, EditorOptions, SelectionInfo } from "./types.js";
@@ -18,11 +18,17 @@ import { runInputRules } from "./input-rules.js";
 import { handleKeydown } from "./keymap.js";
 import { SelectionToolbar } from "./toolbar.js";
 import { SlashMenu } from "./slash-menu.js";
+import { BlockHandles } from "./block-handles.js";
+import { handleCopyCut, handlePaste } from "./clipboard.js";
 import {
   blockKindOf, currentBlock, getSelection, selectionInside, selectionRect,
+  getCaretOffset, setCaretOffset, placeCaretAtStart, createElement,
 } from "./dom.js";
 
 const EMPTY_DOC = "<p><br></p>";
+const HISTORY_LIMIT = 300;
+
+interface Snapshot { md: string; caret: number; }
 
 export class EdodoWrite {
   readonly host: HTMLElement;
@@ -30,6 +36,7 @@ export class EdodoWrite {
   private opts: Required<Pick<EditorOptions, "placeholder" | "toolbar" | "slashMenu" | "spellcheck" | "readOnly">>;
   private toolbar: SelectionToolbar | null = null;
   private slash: SlashMenu | null = null;
+  private blockHandles: BlockHandles | null = null;
   private listeners: { [K in EditorEventName]: Set<EditorEvents[K]> } = {
     change: new Set(), selection: new Set(), focus: new Set(), blur: new Set(),
   };
@@ -37,14 +44,20 @@ export class EdodoWrite {
   private applying = false;
   private destroyed = false;
 
-  // Bound handlers (kept for removal on destroy).
+  // Undo/redo: a stack of Markdown snapshots.
+  private history: Snapshot[] = [];
+  private historyIndex = -1;
+  private restoring = false;
+
   private onInput = () => this.handleInput();
   private onKeyDown = (e: KeyboardEvent) => this.handleKey(e);
   private onSelectionChange = () => this.handleSelectionChange();
   private onFocus = () => this.emit("focus");
   private onBlur = () => { this.slash?.close(); this.toolbar?.hide(); this.emit("blur"); };
   private onClick = (e: MouseEvent) => this.handleClick(e);
-  private onPaste = (e: ClipboardEvent) => this.handlePaste(e);
+  private onCopy = (e: ClipboardEvent) => { if (handleCopyCut(e, false)) { /* copy: no mutation */ } };
+  private onCut = (e: ClipboardEvent) => { if (handleCopyCut(e, true)) this.afterMutation(); };
+  private onPaste = (e: ClipboardEvent) => { if (handlePaste(this.content, e)) this.afterMutation(); };
 
   constructor(host: HTMLElement, options: EditorOptions = {}) {
     this.host = host;
@@ -70,6 +83,7 @@ export class EdodoWrite {
     host.appendChild(this.content);
 
     this.setMarkdown(options.value ?? "", { silent: true });
+    this.seedHistory();
 
     if (options.onChange) this.on("change", options.onChange);
 
@@ -83,10 +97,16 @@ export class EdodoWrite {
       if (this.opts.slashMenu) {
         this.slash = new SlashMenu(this.content, (cmd) => this.exec(cmd));
       }
+      this.blockHandles = new BlockHandles(this.content, this.host, {
+        onChange: () => this.afterMutation(),
+        onInsertAfter: (block) => this.insertParagraphAfter(block),
+      });
       this.content.addEventListener("input", this.onInput);
       this.content.addEventListener("keydown", this.onKeyDown);
       this.content.addEventListener("focus", this.onFocus);
       this.content.addEventListener("blur", this.onBlur);
+      this.content.addEventListener("copy", this.onCopy);
+      this.content.addEventListener("cut", this.onCut);
       this.content.addEventListener("paste", this.onPaste);
       document.addEventListener("selectionchange", this.onSelectionChange);
     }
@@ -106,7 +126,7 @@ export class EdodoWrite {
     this.content.innerHTML = html.trim() || EMPTY_DOC;
     this.ensureNotEmptyStructure();
     this.updatePlaceholder();
-    if (!opts.silent) this.scheduleChange();
+    if (!opts.silent) { this.recordHistory(); this.scheduleChange(); }
   }
 
   getHTML(): string {
@@ -114,23 +134,30 @@ export class EdodoWrite {
   }
 
   isEmpty(): boolean {
-    const text = (this.content.textContent ?? "").replace(/​/g, "").trim();
+    const text = (this.content.textContent ?? "").split(String.fromCharCode(0x200b)).join("").trim();
     return text === "" && !this.content.querySelector("img,hr,input,pre");
   }
 
-  focus(): void {
-    this.content.focus();
-  }
+  focus(): void { this.content.focus(); }
+  blur(): void { this.content.blur(); }
 
-  blur(): void {
-    this.content.blur();
-  }
-
-  /** Apply a formatting command (also used internally by toolbar/keymap/slash). */
   exec(cmd: Command, payload?: { href?: string | null }): void {
     if (this.opts.readOnly) return;
     applyCommand(this.content, cmd, payload);
     this.afterMutation();
+  }
+
+  undo(): void {
+    this.flushPendingHistory();
+    if (this.historyIndex <= 0) return;
+    this.historyIndex -= 1;
+    this.restore(this.history[this.historyIndex]);
+  }
+
+  redo(): void {
+    if (this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex += 1;
+    this.restore(this.history[this.historyIndex]);
   }
 
   setReadOnly(readOnly: boolean): void {
@@ -155,11 +182,14 @@ export class EdodoWrite {
     this.content.removeEventListener("keydown", this.onKeyDown);
     this.content.removeEventListener("focus", this.onFocus);
     this.content.removeEventListener("blur", this.onBlur);
+    this.content.removeEventListener("copy", this.onCopy);
+    this.content.removeEventListener("cut", this.onCut);
     this.content.removeEventListener("paste", this.onPaste);
     this.content.removeEventListener("click", this.onClick);
     document.removeEventListener("selectionchange", this.onSelectionChange);
     this.toolbar?.destroy();
     this.slash?.destroy();
+    this.blockHandles?.destroy();
     if (this.changeTimer) clearTimeout(this.changeTimer);
     this.content.remove();
     (["change", "selection", "focus", "blur"] as EditorEventName[]).forEach((e) => this.listeners[e].clear());
@@ -187,6 +217,8 @@ export class EdodoWrite {
       exec: (cmd) => this.exec(cmd),
       onLink: () => this.requestLink(),
       notify: () => this.afterMutation(),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
     });
   }
 
@@ -194,7 +226,6 @@ export class EdodoWrite {
     const target = e.target as HTMLElement;
     if (target && target.tagName === "INPUT" && (target as HTMLInputElement).type === "checkbox") {
       if (this.opts.readOnly) { e.preventDefault(); return; }
-      // Sync the attribute + li state to the just-toggled property, then notify.
       const box = target as HTMLInputElement;
       queueMicrotask(() => {
         if (box.checked) box.setAttribute("checked", "");
@@ -205,16 +236,6 @@ export class EdodoWrite {
     }
   }
 
-  private handlePaste(e: ClipboardEvent): void {
-    // Prefer pasting as plain text so we don't inject foreign HTML/styles;
-    // Markdown typed in the pasted text still gets picked up by input rules
-    // on the next keystroke. (A richer HTML→MD paste can come later.)
-    const text = e.clipboardData?.getData("text/plain");
-    if (text == null) return;
-    e.preventDefault();
-    document.execCommand("insertText", false, text);
-  }
-
   private requestLink(): void {
     if (this.opts.readOnly) return;
     const url = window.prompt("Link URL (leave blank to remove):", "https://");
@@ -222,17 +243,25 @@ export class EdodoWrite {
     this.exec("link", { href: url.trim() || null });
   }
 
+  private insertParagraphAfter(block: HTMLElement): void {
+    if (this.opts.readOnly) return;
+    const p = createElement("p", {}, "<br>");
+    block.after(p);
+    placeCaretAtStart(p);
+    this.content.focus();
+    this.afterMutation();
+  }
+
   private afterMutation(): void {
     this.ensureNotEmptyStructure();
     this.updatePlaceholder();
+    this.recordHistory();
     this.scheduleChange();
     this.handleSelectionChange();
   }
 
   private ensureNotEmptyStructure(): void {
-    if (this.content.children.length === 0) {
-      this.content.innerHTML = EMPTY_DOC;
-    }
+    if (this.content.children.length === 0) this.content.innerHTML = EMPTY_DOC;
   }
 
   private updatePlaceholder(): void {
@@ -243,10 +272,46 @@ export class EdodoWrite {
     if (this.changeTimer) clearTimeout(this.changeTimer);
     this.changeTimer = setTimeout(() => {
       this.changeTimer = null;
+      this.recordHistory();
       const md = this.getMarkdown();
       this.listeners.change.forEach((fn) => fn(md));
     }, 120);
   }
+
+  // ── History (undo/redo) ────────────────────────────────────────────────────
+
+  private seedHistory(): void {
+    this.history = [{ md: this.getMarkdown(), caret: 0 }];
+    this.historyIndex = 0;
+  }
+
+  private recordHistory(): void {
+    if (this.restoring) return;
+    const md = this.getMarkdown();
+    if (this.history[this.historyIndex]?.md === md) return;
+    // truncate any redo tail, then push
+    this.history.length = this.historyIndex + 1;
+    this.history.push({ md, caret: getCaretOffset(this.content) ?? 0 });
+    if (this.history.length > HISTORY_LIMIT) this.history.shift();
+    this.historyIndex = this.history.length - 1;
+  }
+
+  private flushPendingHistory(): void {
+    if (this.changeTimer) { clearTimeout(this.changeTimer); this.changeTimer = null; }
+    this.recordHistory();
+  }
+
+  private restore(snap: Snapshot): void {
+    this.restoring = true;
+    this.setMarkdown(snap.md, { silent: true });
+    try { setCaretOffset(this.content, snap.caret); } catch { /* caret best-effort */ }
+    this.restoring = false;
+    const md = snap.md;
+    this.listeners.change.forEach((fn) => fn(md));
+    this.handleSelectionChange();
+  }
+
+  // ── Selection ──────────────────────────────────────────────────────────────
 
   private handleSelectionChange(): void {
     if (this.destroyed) return;

@@ -38,6 +38,19 @@ Every color is a CSS variable on `.ew` (`--ew-fg`, `--ew-bg`, `--ew-accent`,
 in your own stylesheet, or restyle `.ew-content`, `.ew-toolbar`, `.ew-slash`
 directly.
 
+## Change Enter/Backspace or clipboard behaviour
+
+- **Keys** — `src/core/keymap.ts` owns Enter/Backspace/Tab and the shortcut map.
+  Enter/Backspace are implemented as manual DOM splits/merges (`splitBlock`,
+  `mergeWithPrevious`, `exitList`, …); follow those patterns and always leave the
+  block model clean (proper block tags, a `<br>` in empty blocks — use
+  `ensureNotEmpty`). See the "contentEditable rules" in
+  [DEVELOPMENT.md](DEVELOPMENT.md).
+- **Clipboard** — `src/core/clipboard.ts`. `handleCopyCut` decides what goes on
+  the clipboard; `insertMarkdown` decides how pasted content lands. Both are pure
+  DOM + the parse/serialize pipeline.
+- **Drag handles** — `src/core/block-handles.ts` (hover gutter + pointer drag).
+
 ## Change Markdown flavour
 
 Parsing is `marked` (`src/core/parse.ts`); serialising is `turndown` +

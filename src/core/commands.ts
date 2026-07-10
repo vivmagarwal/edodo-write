@@ -13,7 +13,7 @@
 import type { Command } from "./types.js";
 import {
   getRange, getSelection, currentBlock, currentListItem, closestWithin,
-  createElement, placeCaretAtEnd,
+  createElement, placeCaretAtEnd, ensureNotEmpty,
 } from "./dom.js";
 
 export function applyCommand(root: HTMLElement, cmd: Command, payload?: { href?: string | null }): void {
@@ -57,10 +57,6 @@ function safeState(cmd: string): boolean {
 
 function moveChildren(from: Node, to: Node): void {
   while (from.firstChild) to.appendChild(from.firstChild);
-}
-
-function ensureNotEmpty(el: HTMLElement): void {
-  if (!el.firstChild) el.appendChild(document.createElement("br"));
 }
 
 const BLOCK_TAGS_RE = /^(P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|HR)$/;

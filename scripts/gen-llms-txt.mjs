@@ -21,7 +21,9 @@ const DOCS = [
   ["INTEGRATION_GUIDE.md", "Embed in your app (API)"],
   ["MARKDOWN_AND_SHORTCUTS.md", "Markdown support & shortcuts"],
   ["ARCHITECTURE.md", "Architecture"],
+  ["DEVELOPMENT.md", "Development guide"],
   ["EXTENDING_GUIDE.md", "Extending"],
+  ["NOTION_UX_STUDY.md", "Notion UX study"],
 ];
 
 const L = [];

@@ -174,6 +174,78 @@ export function deleteLeadingChars(block: HTMLElement, n: number): void {
   range.deleteContents();
 }
 
+const ZWSP = String.fromCharCode(0x200b);
+
+/**
+ * Ensure an element has a placeable caret target. An element that is empty —
+ * or whose only children are empty text nodes (what `Range.extractContents`
+ * leaves behind when the caret sits at the end of a text node) — is NOT a valid
+ * caret position: Chrome inserts typed text *before* it. Normalise such
+ * elements to a single `<br>`.
+ */
+export function ensureNotEmpty(el: HTMLElement): void {
+  const zwsp = String.fromCharCode(0x200b);
+  const hasContent = Array.from(el.childNodes).some(
+    (n) =>
+      n.nodeType === Node.ELEMENT_NODE ||
+      (n.nodeType === Node.TEXT_NODE && (n as Text).data.split(zwsp).join("").length > 0),
+  );
+  if (!hasContent) {
+    el.textContent = "";
+    el.appendChild(document.createElement("br"));
+  }
+}
+
+/**
+ * The caret's position as a plain-text character offset from the start of
+ * `root` (zero-width spaces excluded). Used to restore the caret after an
+ * undo/redo re-hydrates the document from Markdown. Returns null if the caret
+ * is outside `root`.
+ */
+export function getCaretOffset(root: HTMLElement): number | null {
+  const sel = getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.endContainer) && range.endContainer !== root) return null;
+  const pre = range.cloneRange();
+  pre.selectNodeContents(root);
+  pre.setEnd(range.endContainer, range.endOffset);
+  return pre.toString().split(ZWSP).join("").length;
+}
+
+/** Place the caret at a plain-text character offset from the start of `root`. */
+export function setCaretOffset(root: HTMLElement, offset: number): void {
+  const sel = getSelection();
+  if (!sel) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset;
+  let last: Text | null = null;
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    const visibleLen = node.data.split(ZWSP).join("").length;
+    if (remaining <= visibleLen) {
+      const r = document.createRange();
+      r.setStart(node, Math.min(remaining, node.data.length));
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return;
+    }
+    remaining -= visibleLen;
+    last = node;
+    node = walker.nextNode() as Text | null;
+  }
+  if (last) {
+    const r = document.createRange();
+    r.setStart(last, last.data.length);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  } else {
+    placeCaretAtStart(root);
+  }
+}
+
 export function createElement(tag: string, attrs: Record<string, string> = {}, html?: string): HTMLElement {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);

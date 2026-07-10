@@ -19,6 +19,9 @@ Try it:
 - Type \`> \` for a quote, \`\`\`\` for a code block, \`--- \` for a divider
 - Select some text to get a **floating toolbar**
 - On an empty line, press \`/\` for the **slash menu**
+- **Hover** a block, then drag the \`⣿\` grip to reorder it
+- **Paste** Markdown and it renders as blocks; **copy** and you get Markdown back
+- \`⌘/Ctrl+Z\` to undo, \`Tab\`/\`Shift+Tab\` to indent lists
 
 Everything you write round-trips to clean Markdown — watch the panel on the right.`,
   },

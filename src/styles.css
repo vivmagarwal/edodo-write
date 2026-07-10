@@ -77,15 +77,69 @@
 }
 
 /* ── Editable surface ─────────────────────────────────────────────────────── */
+.ew { position: relative; }
 .ew-content {
   max-width: var(--ew-content-width);
   margin: 0 auto;
-  padding: 0.25rem 0.25rem 40vh;
+  /* left gutter holds the hover drag handle */
+  padding: 0.25rem 0.25rem 40vh 2.75rem;
   outline: none;
   caret-color: var(--ew-accent);
   word-break: break-word;
 }
+.ew-content--readonly { padding-left: 0.25rem; }
 .ew-content--readonly { padding-bottom: 1rem; }
+
+/* ── Block handle (hover gutter: + and drag grip) ─────────────────────────── */
+.ew-block-handle {
+  position: absolute;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  height: 22px;
+  z-index: 20;
+  user-select: none;
+}
+.ew-bh-add, .ew-bh-drag {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ew-fg-faint);
+  width: 18px; height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ew-bh-drag { cursor: grab; font-size: 11px; letter-spacing: -1px; }
+.ew-bh-add:hover, .ew-bh-drag:hover { background: var(--ew-bg-subtle); color: var(--ew-fg-muted); }
+
+.ew-drop-line {
+  position: absolute;
+  height: 2px;
+  background: var(--ew-accent);
+  border-radius: 2px;
+  z-index: 19;
+  pointer-events: none;
+}
+.ew-block-dragging { opacity: 0.35; }
+.ew-drag-ghost {
+  position: fixed;
+  z-index: 2147483001;
+  pointer-events: none;
+  opacity: 0.85;
+  padding: 2px 8px !important;
+  background: var(--ew-bg);
+  border: 1px solid var(--ew-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+  max-width: 640px;
+  overflow: hidden;
+  max-height: 160px;
+}
+body.ew-dragging-active { cursor: grabbing !important; user-select: none !important; }
 
 .ew-content::selection, .ew-content *::selection { background: var(--ew-accent-soft); }
 

@@ -36,6 +36,7 @@ const editor = new EdodoWrite(hostEl, options);
 | `isEmpty()` | `boolean` | Whether the document has no meaningful content. |
 | `focus()` / `blur()` | `void` | Focus control. |
 | `exec(cmd, payload?)` | `void` | Apply a formatting command (see below). |
+| `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also bound to ⌘/Ctrl+Z and ⌘/Ctrl+Shift+Z). |
 | `setReadOnly(bool)` | `void` | Toggle editing at runtime. |
 | `on(event, handler)` | `() => void` | Subscribe; returns an unsubscribe fn. |
 | `off(event, handler)` | `void` | Unsubscribe. |
@@ -86,6 +87,26 @@ caret.
 
 A read-only renderer that shares the editor's stylesheet. Use it to display
 stored Markdown.
+
+## Built-in behaviours (no configuration)
+
+These are on by default whenever the editor is editable:
+
+- **Markdown clipboard.** Copy/cut place the selection on the clipboard as
+  Markdown (`text/plain`) *and* rich HTML (`text/html`). Paste accepts either:
+  rich HTML is converted to Markdown, plain text is treated as Markdown — then
+  rendered as blocks, splitting the current block as needed.
+- **Block drag-and-drop.** Hovering a block shows a left-gutter handle
+  (`+` inserts a block below, `⣿` is the drag grip); dragging reorders top-level
+  blocks with a drop-indicator line and a translucent ghost. Give the editor a
+  little left room — the stylesheet reserves a `2.75rem` gutter on `.ew-content`.
+- **Undo/redo** via ⌘/Ctrl+Z and ⌘/Ctrl+Shift+Z (Markdown-snapshot history).
+- **List indent/outdent** with Tab / Shift+Tab; **soft line break** with
+  Shift+Enter.
+
+Disable the toolbar or slash menu with `toolbar: false` / `slashMenu: false`.
+Drag/clipboard/undo are intrinsic to a good editing experience and are always on
+in edit mode.
 
 ## Functional helpers (no editor instance)
 
