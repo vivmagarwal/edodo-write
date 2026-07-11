@@ -19,6 +19,7 @@
  * "Create #query".
  */
 
+import { scrollRowIntoList } from "../core/ui.js";
 import { definePlugin, type EdodoPlugin, type EditorContext } from "../lib/index.js";
 
 export interface TagItem {
@@ -100,7 +101,7 @@ export function tags(options: TagsOptions): EdodoPlugin {
       row.classList.toggle("is-active", i === menu.index);
       row.setAttribute("aria-selected", i === menu.index ? "true" : "false");
     });
-    rows[menu.index]?.scrollIntoView?.({ block: "nearest" });
+    scrollRowIntoList(menu.list, rows[menu.index] as HTMLElement | undefined);
   };
 
   const move = (delta: number): boolean => {

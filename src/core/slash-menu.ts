@@ -14,6 +14,7 @@
  */
 
 import { currentBlock, currentListItem, selectionRect, deleteLeadingChars, textBeforeCaret } from "./dom.js";
+import { scrollRowIntoList } from "./ui.js";
 import { anchorCaret } from "./input-rules.js";
 import { guard } from "./plugin.js";
 import type { EditorContext, SlashItem } from "./types.js";
@@ -143,8 +144,7 @@ export class SlashMenu {
       c.setAttribute("aria-selected", i === this.index ? "true" : "false");
     });
     this.updateActiveDescendant();
-    this.list.querySelectorAll(".ew-slash__item")[this.index]
-      ?.scrollIntoView({ block: "nearest" });
+    scrollRowIntoList(this.el, this.list.querySelectorAll<HTMLElement>(".ew-slash__item")[this.index]);
   }
 
   private updateActiveDescendant(): void {

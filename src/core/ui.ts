@@ -104,7 +104,13 @@ export class EditorUIImpl implements EditorUI {
       window.addEventListener("scroll", onScroll, true);
     }, 0);
 
+    // Position BEFORE rendering: anything layout-sensitive inside render
+    // (focus, scroll adjustments) must see the popover near its anchor, not
+    // parked at the document origin — on a tall page that parking spot is
+    // exactly what turns a stray scroll into a jump to the top.
+    position(el, opts.anchor, opts.placement ?? "below");
     const renderCleanup = opts.render(el, close) ?? undefined;
+    // Re-position once content exists (dimensions changed → clamping).
     position(el, opts.anchor, opts.placement ?? "below");
 
     this.active = { el, cleanup: close };
@@ -169,7 +175,9 @@ export class EditorUIImpl implements EditorUI {
 
         const highlight = () => {
           rows.forEach((r, i) => r.classList.toggle("is-active", i === index));
-          rows[index]?.scrollIntoView({ block: "nearest" });
+          // Scroll ONLY the menu's own list — scrollIntoView walks every
+          // scrollable ancestor including the page (the jump-to-top bug).
+          scrollRowIntoList(container, rows[index]);
         };
         highlight();
 
@@ -274,6 +282,17 @@ export function buildFieldForm(
   });
   container.appendChild(form);
   setTimeout(() => inputs.values().next().value?.focus(), 0);
+}
+
+/** Scroll a row into view WITHIN its list container only — never the page. */
+export function scrollRowIntoList(container: HTMLElement, row: HTMLElement | undefined): void {
+  if (!row) return;
+  const top = row.offsetTop;
+  const bottom = top + row.offsetHeight;
+  if (top < container.scrollTop) container.scrollTop = top;
+  else if (bottom > container.scrollTop + container.clientHeight) {
+    container.scrollTop = bottom - container.clientHeight;
+  }
 }
 
 // ── Positioning ─────────────────────────────────────────────────────────────

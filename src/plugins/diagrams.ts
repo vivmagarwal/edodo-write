@@ -66,6 +66,9 @@ interface DiagramSlashSpec {
 
 /** The shared plugin body — `diagrams()` and `edodoDraw()` differ only in
  *  name, renderer map, and slash-item copy. */
+/** Per-editor "observe new surfaces" hooks (see setup). */
+const rescanByRoot = new WeakMap<HTMLElement, () => void>();
+
 function buildDiagramsPlugin(
   name: string,
   renderers: Record<string, DiagramRenderer>,
@@ -157,11 +160,60 @@ function buildDiagramsPlugin(
 
     setup(ctx) {
       mountWidgets(ctx, spec);
-      return wireWidgetEditing(ctx, spec);
+      const unwireEditing = wireWidgetEditing(ctx, spec);
+      // Per-editor rescan hook (keyed by root: one plugin object may serve
+      // several editors; closure state here must not leak across them).
+
+      // Self-healing renders: a diagram fitted for one container size looks
+      // broken (clipped/mis-centered camera) if the surface later resizes —
+      // pane resizes, layout shifts, theme/window changes. Observe every
+      // diagram surface and re-render on a REAL size change (debounced;
+      // guarded against the observer's initial fire).
+      let observer: ResizeObserver | null = null;
+      let debounce: ReturnType<typeof setTimeout> | null = null;
+      const sizes = new WeakMap<Element, string>();
+      if (typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver((entries) => {
+          let changed = false;
+          for (const entry of entries) {
+            const box = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+            const prev = sizes.get(entry.target);
+            sizes.set(entry.target, box);
+            if (prev !== undefined && prev !== box && entry.contentRect.width > 0) changed = true;
+          }
+          if (!changed) return;
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            ctx.root
+              .querySelectorAll<HTMLElement>(`figure[data-widget="${spec.kind}"]`)
+              .forEach((figure) => figure.removeAttribute("data-rendered"));
+            mountWidgets(ctx, spec);
+            observeAll();
+          }, 150);
+        });
+      }
+      const observeAll = () => {
+        if (!observer) return;
+        ctx.root
+          .querySelectorAll<HTMLElement>(`figure[data-widget="${spec.kind}"] .ew-widget__surface`)
+          .forEach((surface) => observer!.observe(surface));
+      };
+      observeAll();
+      rescanByRoot.set(ctx.root, observeAll);
+
+      return () => {
+        unwireEditing();
+        rescanByRoot.delete(ctx.root);
+        observer?.disconnect();
+        if (debounce) clearTimeout(debounce);
+      };
     },
 
     on: {
-      change: (_md, ctx) => mountWidgets(ctx, spec),
+      change: (_md, ctx) => {
+        mountWidgets(ctx, spec);
+        rescanByRoot.get(ctx.root)?.(); // observe widgets created since setup
+      },
     },
   });
 }
