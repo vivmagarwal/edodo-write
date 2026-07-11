@@ -1,6 +1,6 @@
 {
   "name": "edodo-write",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "type": "module",
   "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
   "license": "MIT",
@@ -51,7 +51,9 @@
   "files": [
     "dist-lib",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "llms-full.txt",
+    "llms.txt"
   ],
   "engines": {
     "node": ">=18"
@@ -63,12 +65,12 @@
     "build": "tsc -b && vite build",
     "build:lib": "vite build --config vite.lib.config.ts",
     "build:types": "tsc -p tsconfig.lib.json",
-    "build:pkg": "npm run build:lib && npm run build:types",
+    "build:pkg": "npm run build:lib && npm run build:types && node scripts/gen-llms-txt.mjs --pkg",
     "preview": "vite preview --port 4183 --strictPort",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build:pkg",
+    "prepublishOnly": "npm run typecheck && npx vitest run && npm run build:pkg",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -19,3 +19,5 @@ public/llms-full.txt
 test-results/
 playwright-report/
 tests/.docs-tmp/
+/llms-full.txt
+/llms.txt

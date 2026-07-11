@@ -271,12 +271,28 @@ npm run typecheck && npm test && npm run test:e2e   # must be green
 bash scripts/publish.sh --dry-run    # inspect the tarball
 bash scripts/publish.sh              # publish (token from ../edodo-draw/.env)
 git commit -am "…" && git push
-bash scripts/deploy-pages.sh         # redeploy the live playground/docs
+bash scripts/deploy-pages.sh         # optional: CI auto-deploys on push (below)
 ```
 
 `scripts/publish.sh` reads `NPM_ACCESS_TOKEN` from `../edodo-draw/.env`, writes
 a temporary gitignored `.npmrc`, runs `npm publish --access public`, and
 removes the token file on exit. `prepublishOnly` builds the package first.
+
+## CI (freshness is enforced, not remembered)
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+1. **Test job** — typecheck, the full vitest suite (which includes the
+   `llms.txt` drift/determinism tests and the executed docs examples), and the
+   Playwright browser suite.
+2. **Deploy job** (master pushes only, after tests pass) — builds the site
+   (`prebuild` regenerates `public/llms*.txt` from `docs/` and FAILS on any
+   unlisted guide) and publishes `dist/` to GitHub Pages.
+
+Consequences: the live site — including `llms.txt` / `llms-full.txt` — can
+never lag the docs on master, and `npm publish` is gated by
+`prepublishOnly` (typecheck + vitest + package build), which also stamps the
+current corpus into the tarball root (`node_modules/edodo-write/llms-full.txt`).
 
 ## Conventions
 

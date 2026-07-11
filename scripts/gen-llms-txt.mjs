@@ -94,4 +94,12 @@ const short = [
 ].join("\n");
 writeFileSync(join(root, "public", "llms.txt"), short);
 
-console.log(`✓ wrote public/llms-full.txt (${full.length} bytes) + public/llms.txt`);
+// --pkg: also write tarball-root copies so the npm package carries the
+// corpus (node_modules/edodo-write/llms-full.txt — agents working inside a
+// consumer repo get full context without a network hop).
+if (process.argv.includes("--pkg")) {
+  writeFileSync(join(root, "llms-full.txt"), full);
+  writeFileSync(join(root, "llms.txt"), short);
+}
+
+console.log(`✓ wrote public/llms-full.txt (${full.length} bytes) + public/llms.txt${process.argv.includes("--pkg") ? " + package copies" : ""}`);
