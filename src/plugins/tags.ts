@@ -237,8 +237,18 @@ export function tags(options: TagsOptions): EdodoPlugin {
    * machinery's render pass.
    */
   const decorate = (ctx: EditorContext): void => {
+    // Multiple instances (# tags + @ mentions) each decorate the SAME link
+    // set — adopt matching links and release only links THIS instance owns,
+    // never blanket-toggle (that would strip a sibling instance's chips).
     ctx.root.querySelectorAll("a").forEach((a) => {
-      a.classList.toggle("ew-tag", (a.textContent ?? "").startsWith(trigger));
+      const text = a.textContent ?? "";
+      if (text.startsWith(trigger)) {
+        a.classList.add("ew-tag");
+        a.dataset.tagTrigger = trigger;
+      } else if (a.dataset.tagTrigger === trigger) {
+        a.classList.remove("ew-tag");
+        delete a.dataset.tagTrigger;
+      }
     });
   };
 

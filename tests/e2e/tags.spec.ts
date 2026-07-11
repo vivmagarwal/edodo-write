@@ -93,3 +93,61 @@ test("stored tag links hydrate with the chip class and round-trip", async ({ pag
   await expect(page.locator(".ew-content a.ew-tag")).toHaveText("#alpha");
   await expect.poll(() => markdown(page)).toBe("keep [#alpha](https://example.com/tags/alpha) and #gamma");
 });
+
+test.describe("@ mentions — a second tags() instance alongside # tags", () => {
+  async function openBoth(page: import("@playwright/test").Page) {
+    await page.goto("/e2e.html?plugins=tags,mentions");
+    const content = page.locator(".ew-content");
+    await content.waitFor();
+    await content.locator(":scope > *").first().click();
+  }
+
+  test("@ opens the mentions source; picking a user stores a plain GFM link", async ({ page }) => {
+    await openBoth(page);
+    await page.keyboard.type("Ping @viv");
+    await expect(page.locator(".ew-menu, .ew-popover")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("about this");
+    await expect.poll(() => page.evaluate(() => window.editor.getMarkdown()))
+      .toBe("Ping [@vivek](https://example.com/users/vivek) about this");
+  });
+
+  test("bot mentions with a custom app scheme round-trip", async ({ page }) => {
+    await openBoth(page);
+    await page.keyboard.type("cc @dodo");
+    await page.keyboard.press("Enter");
+    const md = await page.evaluate(() => window.editor.getMarkdown());
+    expect(md).toBe("cc [@dodo-bot](edodo://bots/dodo)"); // line-end trim eats the chip's trailing space
+    // the custom scheme survives the sanitizer + a full reload round-trip
+    await page.evaluate((m) => window.editor.setMarkdown(m), md);
+    expect(await page.evaluate(() => window.editor.getMarkdown())).toBe(md);
+    await expect(page.locator('.ew-content a[href="edodo://bots/dodo"]')).toHaveText("@dodo-bot");
+  });
+
+  test("# and @ coexist in one sentence, each hitting its own source", async ({ page }) => {
+    await openBoth(page);
+    await page.keyboard.type("Task for @viv");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("under #al");
+    await page.keyboard.press("Enter");
+    const md = await page.evaluate(() => window.editor.getMarkdown());
+    expect(md).toContain("[@vivek](https://example.com/users/vivek)");
+    expect(md).toContain("[#alpha](https://example.com/tags/alpha)");
+  });
+
+  test("an email address never triggers the mentions menu", async ({ page }) => {
+    await openBoth(page);
+    await page.keyboard.type("write to vivek@edodo.app for access");
+    await expect(page.locator(".ew-menu")).toHaveCount(0);
+    expect(await page.evaluate(() => window.editor.getMarkdown()))
+      .toBe("write to vivek@edodo.app for access");
+  });
+
+  test("both chips render with the tag styling on reload", async ({ page }) => {
+    await page.goto(`/e2e.html?plugins=tags,mentions&value=${encodeURIComponent(
+      "[@vivek](https://example.com/users/vivek) shipped [#roadmap](https://example.com/tags/roadmap)",
+    )}`);
+    await page.locator(".ew-content").waitFor();
+    await expect(page.locator("a.ew-tag")).toHaveCount(2);
+  });
+});

@@ -51,6 +51,21 @@ const AVAILABLE: Record<string, () => EdodoPlugin> = {
         return all.filter((t) => t.label.startsWith(query.toLowerCase()));
       },
     }),
+  // A second tags() instance: @ mentions for users and bots — coexists with
+  // the # instance via a distinct name. Custom app schemes are fine hrefs.
+  mentions: () =>
+    tags({
+      name: "mentions",
+      trigger: "@",
+      source: (query: string) => {
+        const all = [
+          { label: "vivek", href: "https://example.com/users/vivek", hint: "Vivek Agarwal" },
+          { label: "dodo-bot", href: "edodo://bots/dodo", hint: "Automation bot" },
+          { label: "anon" },
+        ];
+        return all.filter((t) => t.label.startsWith(query.toLowerCase()));
+      },
+    }),
   embeds: () => embeds(),
 };
 

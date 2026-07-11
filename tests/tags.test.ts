@@ -227,3 +227,24 @@ describe("multiple tags instances", () => {
     })).toThrow(/duplicate plugin name/);
   });
 });
+
+describe("multi-instance decoration", () => {
+  it("# and @ chips decorate independently — no instance strips the other's", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const editor = new EdodoWrite(host, {
+      value: "[@vivek](https://example.com/u/vivek) shipped [#roadmap](https://example.com/t/roadmap)",
+      plugins: [
+        tags({ source: () => [] }),
+        tags({ name: "mentions", trigger: "@", source: () => [] }),
+      ],
+    });
+    const chips = editor.content.querySelectorAll("a.ew-tag");
+    expect(chips.length).toBe(2);
+    // ownership marks are live-DOM only — never in the Markdown
+    expect(editor.getMarkdown()).toBe(
+      "[@vivek](https://example.com/u/vivek) shipped [#roadmap](https://example.com/t/roadmap)",
+    );
+    editor.destroy();
+  });
+});

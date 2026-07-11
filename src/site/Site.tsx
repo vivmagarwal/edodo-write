@@ -12,6 +12,10 @@ const DEMO_TAGS = [
   { label: "markdown" },
   { label: "diagrams", href: "https://github.com/vivmagarwal/edododraw" },
 ];
+const DEMO_PEOPLE = [
+  { label: "vivek", href: "https://github.com/vivmagarwal", hint: "Vivek Agarwal" },
+  { label: "dodo-bot", href: "https://github.com/vivmagarwal/edodo-write", hint: "Automation bot" },
+];
 const PLUGINS = [
   highlight(),
   callout(),
@@ -20,6 +24,12 @@ const PLUGINS = [
   tags({
     source: (query: string) =>
       DEMO_TAGS.filter((t) => t.label.startsWith(query.toLowerCase())),
+  }),
+  tags({
+    name: "mentions",
+    trigger: "@",
+    source: (query: string) =>
+      DEMO_PEOPLE.filter((t) => t.label.startsWith(query.toLowerCase())),
   }),
   embeds(),
 ];

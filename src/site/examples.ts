@@ -140,7 +140,9 @@ menu (click the grip) adds and removes rows and columns.
 
 ## Tags
 
-Type \`#\` and pick: [#roadmap](https://github.com/vivmagarwal/edodo-write/issues) [#markdown](#)
+Type \`#\` for topics and \`@\` for people or bots — two instances of the same
+plugin, each with its own source:
+[#roadmap](https://github.com/vivmagarwal/edodo-write/issues) [@vivek](https://github.com/vivmagarwal) [@dodo-bot](https://github.com/vivmagarwal/edodo-write)
 
 ## Embeds
 
