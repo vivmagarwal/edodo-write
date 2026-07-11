@@ -110,12 +110,18 @@ assert.equal(editor.getMarkdown(), "> quoted, per CommonMark");
 editor.destroy();
 ```
 
-**Toggles are REJECTED.** A collapsible block has no clean Markdown form:
-`<details>/<summary>` is raw HTML that most Markdown pipelines strip or render
-inert, and it round-trips badly. The tags were removed from the sanitizer
-allow-list; a plugin cannot reintroduce collapsed state as a first-class
-block. If content must collapse, that is the host application's concern, not
-the stored document's.
+**Toggles are opt-in only — never core.** A collapsible block has no clean
+Markdown form: `<details>/<summary>` is raw HTML in the stored document. Core
+keeps both tags out of its sanitizer allow-list and `>` keeps meaning
+blockquote. The v0.5 stance was "rejected outright"; RFC 0001
+(markdown-composer parity) superseded it in v0.8.0 with the first-party
+[`detailsToggle()` plugin](FIRST_PARTY_PLUGINS.md#detailstoggle) — a
+deliberate, narrow exception that stores
+`<details data-md-open><summary>…</summary>…</details>` verbatim (GitHub and
+most renderers show a working toggle with no plugin at all) and widens the
+sanitizer for its own tags only. Hosts that don't register the plugin get
+exactly the old behaviour: the sanitizer strips the unknown tags on parse
+(the inner text survives as plain content).
 
 **Callouts map to GitHub alert syntax** (via the first-party `callout()`
 plugin, not core). Notion's callouts have no Markdown form, so the deliberate
@@ -159,8 +165,9 @@ into one.
 Markdown has no underline; a native `<u>` would silently vanish from the
 serialized value, which is worse than refusing.
 
-**Columns are deliberately NOT shipped.** GFM has no columns; raw-HTML
-wrappers are rejected policy (same as toggles); Pandoc-style `:::` fenced divs
+**Columns are deliberately NOT shipped.** GFM has no columns; raw-HTML layout
+wrappers are rejected policy (the `detailsToggle()` exception is one narrow
+semantic token, not a precedent for layout); Pandoc-style `:::` fenced divs
 degrade to visible clutter; and the editing engine's document model is
 deliberately a FLAT list of top-level blocks — that flatness is why
 Enter/Backspace/drag/select-all are reliable. Columns require an engine
