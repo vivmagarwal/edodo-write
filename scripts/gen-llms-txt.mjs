@@ -7,7 +7,7 @@
  * with the docs. Deterministic: fixed order, no timestamps.
  */
 
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,6 +71,8 @@ for (const [file, title] of DOCS) {
 }
 
 const full = L.join("\n");
+// public/ holds only generated (gitignored) files — absent on a clean clone.
+mkdirSync(join(root, "public"), { recursive: true });
 writeFileSync(join(root, "public", "llms-full.txt"), full);
 
 // The index file (llms.txt convention: H1, blockquote summary, link list).

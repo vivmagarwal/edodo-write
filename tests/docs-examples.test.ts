@@ -48,10 +48,10 @@ function syntaxCheck(code: string): void {
 }
 
 /** One strict ts.Program over every tsx temp file, built lazily after
- *  beforeAll has written them. The files live inside the repo, so imports of
- *  the public package names resolve through the package's own `exports` to
- *  the dist-lib type declarations — the docs' React examples must typecheck
- *  against what npm actually ships. */
+ *  beforeAll has written them. Public package names are mapped to `src` —
+ *  the same mapping tsconfig uses — so the check works on a CLEAN checkout
+ *  (dist-lib is a build artifact and absent in CI). The shipped declaration
+ *  emit itself is validated at release time by prepublishOnly's build. */
 let tsxProgram: ts.Program | null = null;
 function tsxDiagnosticsFor(file: string, all: string[]): readonly ts.Diagnostic[] {
   tsxProgram ??= ts.createProgram(all, {
@@ -63,6 +63,13 @@ function tsxDiagnosticsFor(file: string, all: string[]): readonly ts.Diagnostic[
     strict: true,
     skipLibCheck: true,
     noEmit: true,
+    baseUrl: ROOT,
+    paths: {
+      "edodo-write": ["src/lib/index.ts"],
+      "edodo-write/react": ["src/lib/react.tsx"],
+      "edodo-write/plugins": ["src/plugins/index.ts"],
+      "edodo-write/testing": ["src/lib/testing.ts"],
+    },
   });
   const source = tsxProgram.getSourceFile(file);
   if (!source) throw new Error(`tsx program did not load ${file}`);
