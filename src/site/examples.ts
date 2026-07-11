@@ -20,6 +20,8 @@ Try it:
 - Select some text for the **floating toolbar**; \`⌘/Ctrl+K\` opens the **link popover** (click any link to edit it)
 - **Hover** a block: drag the \`⣿\` grip to reorder, or **click** it for Turn into, Duplicate, Copy as Markdown, Delete
 - Type \`==text==\` to ==highlight== it, or \`> [!note] \` for a callout — both from \`edodo-write/plugins\`
+- Type \`:\` plus two letters — \`:rock\` — for **emoji autocomplete** :rocket: and \`@\`/\`#\` for mentions and topics
+- Switch to the **💬 Composer** tab up top: the same editor as a Slack-style chat box (\`layout: "fill"\`, fixed toolbar)
 - **Paste** Markdown and it renders as blocks; **copy** and you get Markdown back
 - **Paste or drop an image** and it uploads (configurable) or embeds — \`/image\` also offers Upload and URL
 - Click **below the last block** to start a new paragraph; select-all then type replaces the whole document
@@ -149,6 +151,42 @@ plugin, each with its own source:
 A bare URL on its own line becomes a media card:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ`,
+  },
+  {
+    id: "extras",
+    label: "Emoji & extras",
+    markdown: `# Emoji, footnotes, files, toggles
+
+## Emoji
+
+Type \`:\` plus two or more letters — \`:rock\` — and pick from the menu. Zero
+config: the built-in map covers the gemoji-standard names, stored as plain
+text tokens. :rocket: :tada: :fire: :heart_eyes:
+
+Unknown codes survive verbatim (\`:nope:\`), and \`12:30:45\` is never hijacked.
+
+## Footnotes
+
+Markdown footnotes round-trip[^1] and renumber as you write[^2].
+
+[^1]: The reference and the definition stay linked.
+
+[^2]: Stored as standard \`[^id]\` syntax.
+
+## File attachments
+
+A file token renders as a chip — click it to open:
+
+!file[edodo-write-spec.pdf](https://github.com/vivmagarwal/edodo-write/raw/master/README.md)
+
+## Collapsible toggle
+
+<details><summary>**Click to expand** — stored as native HTML</summary>
+
+GitHub renders \`<details>\` natively, so this degrades to a working toggle
+everywhere. The summary renders inline Markdown; the body renders blocks.
+
+</details>`,
   },
   {
     id: "article",
