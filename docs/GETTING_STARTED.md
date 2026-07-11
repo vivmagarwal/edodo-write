@@ -120,7 +120,8 @@ editor.destroy();
 - **Interactive task lists** — tick a checkbox and the Markdown flips
   `[ ]` → `[x]`.
 - **Tables** — `/table` inserts a GFM table; type in cells, Tab/Enter walk
-  them (Tab at the end adds a row), and the block menu adds/deletes rows and
+  them (Tab at the end adds a row), and hovering a cell reveals Notion-style
+  column/row handles that insert, move, clear, and
   columns — see [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).
 - **Images** — paste a screenshot, drag-and-drop files, or use `/image`
   (Upload button or a URL + alt form); hosting is pluggable via `uploadImage`,

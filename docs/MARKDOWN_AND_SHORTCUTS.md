@@ -103,10 +103,14 @@ Keys inside a table:
 | `Shift + Enter` | A line break **inside** the cell — stored as a literal `<br>`, the GFM idiom for multi-line cells |
 | `Backspace` | Deletes text only — it never merges cells and never pulls outside content into the table |
 
-Structure editing lives in the block menu — click the `⣿` grip on a table and
-a **Table** group appears with *Add row below*, *Add column right*, *Delete
-row* and *Delete column*, all relative to the **caret's cell** (click a cell
-first). Two rules come from GFM itself:
+**Structure** — hover any cell for the Notion-style handles: a pill above the
+column (*Insert left / Insert right / Move left / Move right / Clear contents /
+Delete column*) and a pill beside the row (*Insert above / Insert below / Move
+up / Move down / Clear contents / Delete row*), plus **+** buttons on the
+table's right edge (add column) and bottom edge (add row). Destructive actions
+on the header row are disabled — GFM requires it — and the last remaining
+column cannot be deleted. The block menu (grip click) keeps whole-table
+actions: Duplicate, Copy as Markdown, Delete.
 
 - **The header row is protected.** GFM tables require one, so *Delete row* on
   the header refuses with a toast ("Markdown tables need their header row").

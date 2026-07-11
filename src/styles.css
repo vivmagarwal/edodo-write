@@ -572,3 +572,31 @@ figure[data-widget="embed"] .ew-widget__surface { padding: 0; min-height: 0; }
 .ew-embed__card-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex: none; }
 
 /* Tag suggestion menu reuses .ew-menu styles via the UI layer. */
+
+/* ── Table hover controls (Notion-style column/row handles + add buttons) ── */
+.ew-table-handle {
+  position: absolute;
+  z-index: 21;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: 1px solid var(--ew-border);
+  background: var(--ew-bg);
+  color: var(--ew-fg-muted);
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+.ew-table-handle:hover {
+  background: var(--ew-accent);
+  border-color: var(--ew-accent);
+  color: #fff;
+}
+.ew-th-col { width: 28px; height: 14px; border-radius: 7px; }
+.ew-th-row { width: 14px; height: 28px; border-radius: 7px; }
+.ew-th-addcol { width: 14px; height: 28px; border-radius: 7px; font-size: 13px; }
+.ew-th-addrow { width: 28px; height: 14px; border-radius: 7px; font-size: 13px; }

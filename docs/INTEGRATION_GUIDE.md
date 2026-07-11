@@ -357,7 +357,11 @@ On by default whenever the editor is editable:
   shows a "Type “/” for commands…" hint.
 - **Table editing.** Tables are editable in place: Tab/Shift+Tab walk cells
   (Tab in the last cell appends a row), Enter moves down a row (and escapes
-  below from the last row), and the block menu offers row/column operations
+  below from the last row), and hovering a cell reveals Notion-style handles —
+  a column pill (Insert left/right, Move, Clear contents, Delete column), a row
+  pill (Insert above/below, Move, Clear, Delete row), and + buttons on the
+  table's right/bottom edges. The old block-menu entries are replaced by these
+  hover controls; the block menu keeps whole-table actions
   with the GFM-required header row protected. Guards still hold: Backspace
   never merges a paragraph into a table. Details:
   [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).

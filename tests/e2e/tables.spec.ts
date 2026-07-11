@@ -60,47 +60,31 @@ test.describe("keyboard navigation", () => {
   });
 });
 
-test.describe("block menu table operations", () => {
-  async function openTableMenu(page: import("@playwright/test").Page, cellSelector: string) {
-    await page.locator(cellSelector).click(); // caret into the target cell
-    await page.locator(".ew-content table").hover();
-    await page.locator(".ew-bh-drag").click();
+test.describe("hover controls (the Notion-style authoring surface)", () => {
+  /** Pure user gestures: hover a cell, click the pill, pick a menu item. */
+  async function columnMenu(page: import("@playwright/test").Page, cellText: string) {
+    await page.locator(".ew-content th, .ew-content td").filter({ hasText: cellText }).first().hover();
+    await page.locator(".ew-th-col").click();
+    await expect(page.locator(".ew-menu")).toBeVisible();
+  }
+  async function rowMenu(page: import("@playwright/test").Page, cellText: string) {
+    await page.locator(".ew-content th, .ew-content td").filter({ hasText: cellText }).first().hover();
+    await page.locator(".ew-th-row").click();
     await expect(page.locator(".ew-menu")).toBeVisible();
   }
 
-  test("Add row below the caret's row", async ({ page }) => {
+  test("hovering a cell reveals column/row handles and the + buttons", async ({ page }) => {
     await openEditor(page, TABLE_MD);
-    await openTableMenu(page, ".ew-content td:first-child");
-    await page.locator(".ew-menu__item", { hasText: "Add row below" }).click();
-    await page.keyboard.type("added");
-    const md = await markdown(page);
-    expect(md.split("\n").length).toBe(4); // header + sep + 2 body rows
-    expect(squash(md)).toContain("| added |");
+    await page.locator(".ew-content td").first().hover();
+    await expect(page.locator(".ew-th-col")).toBeVisible();
+    await expect(page.locator(".ew-th-row")).toBeVisible();
+    await expect(page.locator(".ew-th-addcol")).toBeVisible();
+    await expect(page.locator(".ew-th-addrow")).toBeVisible();
   });
 
-  test("Add column right of the caret's column", async ({ page }) => {
+  test("Delete column via the column pill — no caret preparation needed", async ({ page }) => {
     await openEditor(page, TABLE_MD);
-    await openTableMenu(page, ".ew-content th:first-child");
-    await page.locator(".ew-menu__item", { hasText: "Add column right" }).click();
-    await page.keyboard.type("mid");
-    expect(squash(await markdown(page))).toContain("| a | mid | b |");
-  });
-
-  test("Delete row (body) works; the header row is protected", async ({ page }) => {
-    await openEditor(page, TABLE_MD);
-    await openTableMenu(page, ".ew-content td:first-child");
-    await page.locator(".ew-menu__item", { hasText: "Delete row" }).click();
-    await expect.poll(() => markdown(page)).not.toContain("| 1");
-
-    await openTableMenu(page, ".ew-content th:first-child");
-    await page.locator(".ew-menu__item", { hasText: "Delete row" }).click();
-    await expect(page.locator(".ew-toast")).toContainText("header row");
-    expect(squash(await markdown(page))).toContain("| a | b |");
-  });
-
-  test("Delete column removes the caret's column everywhere", async ({ page }) => {
-    await openEditor(page, TABLE_MD);
-    await openTableMenu(page, ".ew-content th:nth-child(2)");
+    await columnMenu(page, "b");
     await page.locator(".ew-menu__item", { hasText: "Delete column" }).click();
     const md = await markdown(page);
     expect(squash(md)).toContain("| a |");
@@ -108,9 +92,87 @@ test.describe("block menu table operations", () => {
     expect(squash(md)).not.toContain("| 2 |");
   });
 
-  test("'Turn into' entries are hidden for tables; Delete still offered", async ({ page }) => {
+  test("Insert left / Insert right place the caret in the new header cell", async ({ page }) => {
     await openEditor(page, TABLE_MD);
-    await openTableMenu(page, ".ew-content td:first-child");
+    await columnMenu(page, "a");
+    await page.locator(".ew-menu__item", { hasText: "Insert left" }).click();
+    await page.keyboard.type("first");
+    expect(squash(await markdown(page))).toContain("| first | a | b |");
+
+    await columnMenu(page, "b");
+    await page.locator(".ew-menu__item", { hasText: "Insert right" }).click();
+    await page.keyboard.type("last");
+    expect(squash(await markdown(page))).toContain("| first | a | b | last |");
+  });
+
+  test("Move column right reorders every row", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await columnMenu(page, "a");
+    await page.locator(".ew-menu__item", { hasText: "Move right" }).click();
+    const md = squash(await markdown(page));
+    expect(md).toContain("| b | a |");
+    expect(md).toContain("| 2 | 1 |");
+  });
+
+  test("row menu: Insert below, Move, Delete; header row protected", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await rowMenu(page, "1");
+    await page.locator(".ew-menu__item", { hasText: "Insert below" }).click();
+    await page.keyboard.type("x");
+    expect(squash(await markdown(page))).toContain("| x |");
+
+    // Header row: Delete/Move/Insert-above are disabled.
+    await rowMenu(page, "a");
+    await expect(page.locator(".ew-menu__item", { hasText: "Delete row" })).toBeDisabled();
+    await expect(page.locator(".ew-menu__item", { hasText: "Insert above" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+
+    // Body row deletion works.
+    await rowMenu(page, "x");
+    await page.locator(".ew-menu__item", { hasText: "Delete row" }).click();
+    await expect.poll(async () => squash(await markdown(page))).not.toContain("| x |");
+  });
+
+  test("Clear contents empties the column but keeps the structure", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await columnMenu(page, "b");
+    await page.locator(".ew-menu__item", { hasText: "Clear contents" }).click();
+    const md = squash(await markdown(page));
+    expect(md).not.toContain("b");
+    expect(md.split("\n").length).toBe(3);
+  });
+
+  test("the edge + buttons add a column and a row", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await page.locator(".ew-content td").first().hover();
+    await page.locator(".ew-th-addcol").click();
+    await page.keyboard.type("extra");
+    expect(squash(await markdown(page))).toContain("| a | b | extra |");
+
+    await page.locator(".ew-content td").first().hover();
+    await page.locator(".ew-th-addrow").click();
+    await page.keyboard.type("tail");
+    expect(squash(await markdown(page))).toContain("| tail |");
+  });
+
+  test("last remaining column cannot be deleted", async ({ page }) => {
+    await openEditor(page, "| only |\n| --- |\n| x |");
+    await columnMenu(page, "only");
+    await expect(page.locator(".ew-menu__item", { hasText: "Delete column" })).toBeDisabled();
+  });
+
+  test("handles are inert in read-only mode", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await page.evaluate(() => window.editor.setReadOnly(true));
+    await page.locator(".ew-content td").first().hover();
+    await expect(page.locator(".ew-th-col")).toBeHidden();
+  });
+
+  test("whole-table Delete stays in the block menu; 'Turn into' hidden", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await page.locator(".ew-content td").first().click();
+    await page.locator(".ew-content table").hover();
+    await page.locator(".ew-bh-drag").click();
     await expect(page.locator(".ew-menu__item", { hasText: "Heading 1" })).toHaveCount(0);
     await page.locator(".ew-menu__item.is-danger", { hasText: "Delete" }).click();
     await expect.poll(() => markdown(page)).toBe("");

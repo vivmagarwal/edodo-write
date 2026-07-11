@@ -28,6 +28,7 @@ import { handleKeydown } from "./keymap.js";
 import { SelectionToolbar } from "./toolbar.js";
 import { SlashMenu } from "./slash-menu.js";
 import { BlockHandles } from "./block-handles.js";
+import { TableControls } from "./table-ui.js";
 import { handleCopyCut, handlePaste, insertMarkdown, type MarkdownPipeline } from "./clipboard.js";
 import {
   isImageFile, dataUrlUploader, previewUrl, revokePreviewUrl, defaultAlt,
@@ -64,6 +65,7 @@ export class EdodoWrite {
   private toolbar: SelectionToolbar | null = null;
   private slash: SlashMenu | null = null;
   private blockHandles: BlockHandles | null = null;
+  private tableControls: TableControls | null = null;
   private pluginCleanups: Array<() => void> = [];
   private listeners: { [K in EditorEventName]: Set<EditorEvents[K]> } = {
     change: new Set(), selection: new Set(), focus: new Set(), blur: new Set(),
@@ -189,6 +191,11 @@ export class EdodoWrite {
       onMenu: (block, anchor) => this.openBlockMenu(block, anchor),
     });
     this.blockHandles.setEnabled(!this.opts.readOnly);
+    this.tableControls = new TableControls(this.content, this.host, {
+      commit: (fn) => { this.transact(fn); this.focus(); },
+      ui: this.ui,
+    });
+    this.tableControls.setEnabled(!this.opts.readOnly);
 
     this.content.addEventListener("beforeinput", this.onBeforeInput);
     this.content.addEventListener("input", this.onInput);
@@ -394,6 +401,7 @@ export class EdodoWrite {
     this.opts.readOnly = readOnly;
     this.content.setAttribute("contenteditable", readOnly ? "false" : "true");
     this.blockHandles?.setEnabled(!readOnly);
+    this.tableControls?.setEnabled(!readOnly);
     if (readOnly) {
       this.toolbar?.hide();
       this.slash?.close();
@@ -435,6 +443,7 @@ export class EdodoWrite {
     this.toolbar?.destroy();
     this.slash?.destroy();
     this.blockHandles?.destroy();
+    this.tableControls?.destroy();
     this.ui.destroy();
     if (this.changeTimer) clearTimeout(this.changeTimer);
     this.content.remove();
@@ -603,7 +612,13 @@ export class EdodoWrite {
     // row/column operations depend on the exact cell.
     const range = getSelection()?.rangeCount ? getSelection()!.getRangeAt(0) : null;
     const caretInside = !!range && block.contains(range.startContainer);
-    if (!caretInside) placeCaretAtStart(block);
+    if (!caretInside) {
+      // For tables the placeable position is a CELL, not (table, 0).
+      const target = block.tagName === "TABLE"
+        ? ((block.querySelector("th, td") as HTMLElement | null) ?? block)
+        : block;
+      placeCaretAtStart(target);
+    }
     const items = this.registry.blockMenuItems
       .filter((item) => !item.when || guard("block-menu", `when "${item.id}"`, () => item.when!(this.ctx, block)))
       .map((item) => ({

@@ -13,22 +13,9 @@
 import type { EdodoPlugin, EditorContext } from "./types.js";
 import { coreCommands } from "./commands.js";
 import { openLinkEditor } from "./link-ui.js";
-import { appendTableRow, currentTableCell } from "./keymap.js";
 import { buildFieldForm } from "./ui.js";
 import type { EditorUIImpl } from "./ui.js";
 import { placeCaretAtStart, placeCaretAtEnd, selectionRect, currentBlock } from "./dom.js";
-
-/** A body row matching the table's column count. */
-function buildRow(table: HTMLElement): HTMLTableRowElement {
-  const cols = table.querySelector("tr")?.children.length ?? 1;
-  const tr = document.createElement("tr");
-  for (let i = 0; i < cols; i++) {
-    const td = document.createElement("td");
-    td.appendChild(document.createElement("br"));
-    tr.appendChild(td);
-  }
-  return tr;
-}
 
 /** Turn the hovered block into `cmd`. The caret is already inside the block
  *  (the block menu places it before running items), so exec targets it.
@@ -45,29 +32,6 @@ function turnInto(id: string, title: string, cmd: string): NonNullable<EdodoPlug
       ctx.exec(cmd as string);
     },
   };
-}
-
-/** Table structure ops — operate on the caret's cell (the block menu keeps
- *  the caret in place when it is already inside the block). */
-function tableOp(
-  id: string,
-  title: string,
-  run: (table: HTMLElement, cell: HTMLElement | null, ctx: EditorContext) => void,
-): NonNullable<EdodoPlugin["blockMenuItems"]>[number] {
-  return {
-    id,
-    title,
-    group: "Table",
-    when: (_ctx, block) => block.tagName === "TABLE",
-    run: (ctx, block) => {
-      const cell = currentTableCell(ctx.root);
-      run(block, cell && block.contains(cell) ? cell : null, ctx);
-    },
-  };
-}
-
-function columnIndexOf(cell: HTMLElement): number {
-  return Array.from(cell.parentElement?.children ?? []).indexOf(cell);
 }
 
 function openImageForm(ctx: EditorContext): void {
@@ -234,60 +198,6 @@ export function corePreset(): EdodoPlugin {
     ],
 
     blockMenuItems: [
-      tableOp("table-add-row", "Add row below", (table, cell) => {
-        if (!cell) {
-          placeCaretAtStart(appendTableRow(table));
-          return;
-        }
-        const row = cell.closest("tr")!;
-        if (row.closest("thead")) {
-          // A new row right under the header = the first body row.
-          const tbody = table.querySelector("tbody");
-          const tr = buildRow(table);
-          if (tbody) tbody.prepend(tr);
-          else row.after(tr);
-          placeCaretAtStart(tr.firstElementChild as HTMLElement);
-          return;
-        }
-        const tr = buildRow(table);
-        row.after(tr);
-        placeCaretAtStart(tr.firstElementChild as HTMLElement);
-      }),
-      tableOp("table-add-col", "Add column right", (table, cell) => {
-        const index = cell ? columnIndexOf(cell) : (table.querySelector("tr")?.children.length ?? 1) - 1;
-        table.querySelectorAll("tr").forEach((tr) => {
-          const isHead = !!tr.closest("thead") || tr.querySelector("th") != null;
-          const el = document.createElement(isHead ? "th" : "td");
-          el.appendChild(document.createElement("br"));
-          const ref = tr.children[index];
-          if (ref) ref.after(el);
-          else tr.appendChild(el);
-        });
-        if (cell) placeCaretAtStart(cell.nextElementSibling as HTMLElement);
-      }),
-      tableOp("table-del-row", "Delete row", (table, cell, ctx) => {
-        const row = cell?.closest("tr");
-        if (!row) return;
-        if (row.closest("thead") || row.querySelector("th")) {
-          ctx.ui.notify("Markdown tables need their header row");
-          return;
-        }
-        const next = (row.nextElementSibling ?? row.previousElementSibling) as HTMLElement | null;
-        row.remove();
-        if (next) placeCaretAtStart(next.querySelector("td,th") as HTMLElement ?? next);
-      }),
-      tableOp("table-del-col", "Delete column", (table, cell, ctx) => {
-        if (!cell) return;
-        const cols = table.querySelector("tr")?.children.length ?? 0;
-        if (cols <= 1) {
-          ctx.ui.notify("A table needs at least one column");
-          return;
-        }
-        const index = columnIndexOf(cell);
-        table.querySelectorAll("tr").forEach((tr) => tr.children[index]?.remove());
-        const land = table.querySelector("th, td") as HTMLElement | null;
-        if (land) placeCaretAtStart(land);
-      }),
       turnInto("paragraph", "Text", "paragraph"),
       turnInto("heading1", "Heading 1", "heading1"),
       turnInto("heading2", "Heading 2", "heading2"),

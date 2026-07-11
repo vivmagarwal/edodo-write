@@ -77,7 +77,7 @@ when I press X", this is the reference.
 
 | Behaviour | Notion | edodo-write |
 |---|---|---|
-| **Tables** | Full grid: type in cells, add/delete rows & columns, optional header row/column | ✅ GFM tables: type in cells; Tab/Enter navigation; block-menu *Add row below / Add column right / Delete row / Delete column* on the caret's cell. The header **row** is required (GFM) and protected by a toast; a header **column** has no GFM form (see divergences) |
+| **Tables** | Full grid: type in cells; hover handles per column/row with Insert/Move/Clear/Delete; + buttons on the edges | ✅ same pattern: hover a cell for the column pill (Insert left/right, Move, Clear contents, Delete column) and row pill (Insert above/below, Move, Clear, Delete row), plus + buttons on the right/bottom edges; Tab/Enter navigation. The header **row** is required by GFM (its destructive actions are disabled in the menu); a header **column** has no GFM form (see divergences) |
 | **Equations** (inline + block) | KaTeX inline `$…$`-style and block equations | ✅ via the `math()` plugin — `$x^2$` chips and `$$…$$` widgets, KaTeX rendering when installed, styled plain TeX otherwise; stored as GitHub-native math syntax |
 | **@-mentions** | People/pages via `@` | ✅ via the `tags()` plugin — a configurable trigger (`#`, `@`, …) and *your* suggestion source; stored as plain GFM links (`[#tag](href)`) or plain text — zero invented syntax |
 | **Media embeds** (video/audio/bookmark) | Paste a URL → embed block | ✅ via the `embeds()` plugin — a paragraph that is one bare URL becomes a player/bookmark widget; stored as the bare URL line; a written `[title](url)` link is the opt-out |
