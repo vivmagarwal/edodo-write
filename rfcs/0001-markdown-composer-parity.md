@@ -491,7 +491,7 @@ export function normalizeBodyToMarkdown(input: string) {   // stays app-layer
 Ship these as first-party plugins/props so a host wrapper can reach markdown-composer feature parity. Each is a paired parse+serialize plugin (round-trip contract) unless noted.
 
 - **Footnotes plugin** (`src/plugins/footnote.ts`). Definition `[^id]: text` (line-anchored, 4-space/tab continuation), reference `[^id]`, numbered by definition order; unmatched ref → literal. Render ref `<sup class="ew-fn-ref"><a href="#…" id="…">{n}</a></sup>` and a trailing `<section class="ew-footnotes">`. `insertFootnote()` imperative. Round-trips to `[^id]`/`[^id]:`.
-- **Collapsible toggle plugin** (`<details>`/`<summary>`, `insertDetailsBlock()`). Summary content renders inline markdown (`parseInline`). Preserve `data-md-block`/`data-md-open`/`data-md-empty` round-trip attrs; sanitizer allows `open` on `<details>`.
+- **Collapsible toggle plugin** (`<details>`/`<summary>`, `insertDetailsBlock()`). **Policy note:** this deliberately SUPERSEDES the v0.5 "toggles rejected" decision (docs/NOTION_UX_STUDY.md divergences) — markdown-composer parity requires them, and the raw-HTML-in-Markdown cost is accepted for this token. Update NOTION_UX_STUDY and FIRST_PARTY_PLUGINS in the same release that ships this plugin. Summary content renders inline markdown (`parseInline`). Preserve `data-md-block`/`data-md-open`/`data-md-empty` round-trip attrs; sanitizer allows `open` on `<details>`.
 - **File/attachment token plugin** (`src/plugins/file.ts`). Exact stored form `!file[name](url)` (name may be **empty**: `[^\]]*`); render:
   ```html
   <a class="ew-file" href="{url}" data-file-name="{name}" data-file-url="{url}" target="_blank" rel="noopener noreferrer" contenteditable="false"><span class="ew-file-icon">📎</span>{name || url}</a>
@@ -510,7 +510,7 @@ Ship these as first-party plugins/props so a host wrapper can reach markdown-com
 ## 13. Cross-cutting
 
 - **React 19 peer support + CI lane.** `peerDependencies: { react: "^18 || ^19", react-dom: "^18 || ^19" }`. Add a CI matrix lane running the render/hydration suite under React 19. No `findDOMNode`, no legacy context; deterministic render (§4.4).
-- **ESM.** Ship real ESM with a subpath `exports` map: `.` , `./react`, `./plugins`, `./testing`, `./standalone`, and the new `./email`, `./ingest`, `./parse`. Generate `.d.ts` (`npm run build:types`) and point `types` at built declarations for every subpath — v0.6.5 currently ships **no** built `.d.ts`, which blocks typed host consumption. This is a required fix, not optional.
+- **ESM.** Ship real ESM with a subpath `exports` map: `.` , `./react`, `./plugins`, `./testing`, `./standalone`, and the new `./email`, `./ingest`, `./parse`. `.d.ts` generation is already in place (`npm run build:types`; the published tarball ships ~31 declaration files with `types` wired for every subpath) — the requirement here is only that the NEW subpaths (`./email`, `./ingest`, `./parse`) join that existing pipeline.
 - **No-DOM guarantee.** `toHTML`, `renderMarkdownWithPlugins`, `createRenderCodec`, `toPlainText`, `toEmailHtml`, `htmlToMarkdown`, and the `./parse` API must all run in bare Node (Next.js server components, edge). Only the interactive editor and DOM enhancers require a DOM. Add a CI lane that imports the server surface in a **DOM-free** Node context and runs the sanitize/render/plaintext suites there.
 - **Theming / CSS-var contract.** Expose the read-render styles as CSS custom properties on the `.ew-content` (and email-neutral) scope so hosts theme without overriding rules — e.g. `--ew-accent`, `--ew-mention-bg`, `--ew-code-bg`, plus a dark-mode signal (`.ew-dark` ancestor / `prefers-color-scheme`). EDodo maps these to its teal/dark tokens. Ship `edodo-write.css` and document that consumers must also load a highlight.js theme + `katex/dist/katex.css` (the package does not bundle them), matching markdown-composer's consumer contract.
 - **Performance.** `createRenderCodec`/`createEmailRenderer` build the marked+turndown registry **once**; reuse across renders (don't rebuild per call as the lazy module parser does). Keep highlight.js **core-only** with an explicit language registry (js/ts/xml/css/python/json/bash/shell/markdown/sql/java/c/cpp/csharp/go/rust/php/ruby/yaml/diff/plaintext; unknown → `plaintext`) to keep public-page bundles small.
@@ -523,12 +523,15 @@ Every change is **additive and semver-minor**. No existing export changes signat
 
 **Suggested roadmap:**
 
+(Version numbers below start after v0.7.0, which shipped the CDN/standalone
+entry while this RFC was in review.)
+
 | Version | Contents |
 |---|---|
-| **0.7 — Security + render** | §3 no-DOM sanitizer + remove the `DOMParser`-undefined bypass; §4 `renderMarkdownWithPlugins` / `createRenderCodec` / `<Markdown plugins>`; ship `.d.ts` for all subpaths; DOM-free CI lane. |
-| **0.8 — Mentions + emoji + insertText** | §5 `tags()` serialize/parse/render hooks + `allowBroadcast`; §6 `emoji()` plugin; §7 `insertText` command + method. |
-| **0.9 — Parse + plaintext + email + ingest** | §8 `./parse` (splitter, `parseTokens`, `extractTokens`, `toggleTaskInMarkdown`); §9 `toPlainText`; §10 `./email`; §11 configurable `./ingest`. |
-| **0.10 — Editor parity** | §12 footnote/toggle/file plugins, modes/sourceDrawer/dictation/editorRef, toolbar presets, block drag, stable DOM hooks; React 19 CI lane. |
+| **0.8 — Security + render** | §3 no-DOM sanitizer + remove the `DOMParser`-undefined bypass; §4 `renderMarkdownWithPlugins` / `createRenderCodec` / `<Markdown plugins>`; `.d.ts` for the new subpaths; DOM-free CI lane. |
+| **0.9 — Mentions + emoji + insertText** | §5 `tags()` serialize/parse/render hooks + `allowBroadcast`; §6 `emoji()` plugin; §7 `insertText` command + method. |
+| **0.10 — Parse + plaintext + email + ingest** | §8 `./parse` (splitter, `parseTokens`, `extractTokens`, `toggleTaskInMarkdown`); §9 `toPlainText`; §10 `./email`; §11 configurable `./ingest`. |
+| **0.11 — Editor parity** | §12 footnote/toggle/file plugins, modes/sourceDrawer/dictation/editorRef, toolbar presets, block drag, stable DOM hooks; React 19 CI lane. |
 
 ---
 
