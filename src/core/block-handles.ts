@@ -59,7 +59,11 @@ export class BlockHandles {
 
     root.addEventListener("mousemove", this.onRootMove);
     host.addEventListener("mouseleave", this.onRootLeave);
-    this.handle.addEventListener("mouseenter", () => { if (this.raf) cancelAnimationFrame(this.raf); });
+    this.handle.addEventListener("mouseenter", () => {
+      // Zeroing matters: a cancelled id left in `raf` would dead-lock
+      // trackHover's `if (this.raf) return` guard for good.
+      if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    });
   }
 
   /** Read-only support: disabling hides the gutter and inert-s hover + drag. */
@@ -79,6 +83,7 @@ export class BlockHandles {
     if (this.raf) return;
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
+      if (!this.enabled) return; // setReadOnly can land inside the mousemove→frame gap
       const block = this.blockFrom(e.target as Node);
       if (block && block !== this.hovered) {
         this.hovered = block;
@@ -104,6 +109,8 @@ export class BlockHandles {
   }
 
   private hide(): void {
+    // A reposition still in flight would re-show what we just hid.
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
     this.handle.style.display = "none";
     this.hovered = null;
   }

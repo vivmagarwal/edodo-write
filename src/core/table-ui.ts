@@ -119,6 +119,7 @@ export class TableControls {
     const target = e.target as HTMLElement;
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
+      if (!this.enabled) return; // setReadOnly can land inside the mousemove→frame gap
       const cell = target?.closest?.("td, th") as HTMLElement | null;
       const table = cell?.closest("table") as HTMLElement | null;
       if (!cell || !table || !this.root.contains(table)) {
@@ -173,6 +174,8 @@ export class TableControls {
   }
 
   private hide(): void {
+    // A reposition still in flight would re-show what we just hid.
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
     this.colHandle.style.display = "none";
     this.rowHandle.style.display = "none";
     this.addCol.style.display = "none";

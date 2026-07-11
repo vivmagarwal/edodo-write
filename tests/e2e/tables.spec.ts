@@ -168,6 +168,22 @@ test.describe("hover controls (the Notion-style authoring surface)", () => {
     await expect(page.locator(".ew-th-col")).toBeHidden();
   });
 
+  // Same race as the block gutter: pills show one animation frame after the
+  // mousemove that requested them, so a setReadOnly landing inside that gap
+  // must not let the stale frame re-show them.
+  test("setReadOnly inside the mousemove→frame gap keeps pills hidden", async ({ page }) => {
+    await openEditor(page, TABLE_MD);
+    await page.evaluate(async () => {
+      const cell = document.querySelector(".ew-content td")!;
+      cell.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      window.editor.setReadOnly(true); // same task: the show-frame is still pending
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
+    await expect(page.locator(".ew-th-col")).toBeHidden();
+    await expect(page.locator(".ew-th-row")).toBeHidden();
+  });
+
   test("whole-table Delete stays in the block menu; 'Turn into' hidden", async ({ page }) => {
     await openEditor(page, TABLE_MD);
     await page.locator(".ew-content td").first().click();

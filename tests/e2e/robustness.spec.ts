@@ -101,6 +101,23 @@ test.describe("read-only at runtime", () => {
     expect(await markdown(page)).toBe("first\n\nsecond");
   });
 
+  // The gutter handle shows one animation frame AFTER the mousemove that
+  // requested it. If setReadOnly lands inside that gap, the stale frame must
+  // not resurrect the handle (it then sticks: read-only swallows the further
+  // mousemoves that would reposition or hide it). Drives the exact
+  // interleaving synchronously — this is the race CI hit as a flake.
+  test("setReadOnly inside the mousemove→frame gap leaves no handle behind", async ({ page }) => {
+    await openEditor(page, "first\n\nsecond");
+    await page.evaluate(async () => {
+      const block = document.querySelectorAll(".ew-content > p")[1]!;
+      block.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      window.editor.setReadOnly(true); // same task: the show-frame is still pending
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
+    await expect(page.locator(".ew-block-handle")).toBeHidden();
+  });
+
   test("an editor constructed read-only becomes FULLY editable on toggle", async ({ page }) => {
     await page.goto("/e2e.html");
     await page.evaluate(() => {
