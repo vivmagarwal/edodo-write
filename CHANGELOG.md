@@ -3,6 +3,64 @@
 All notable changes to `edodo-write` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## 0.9.0
+
+Composer ergonomics: everything needed to drop the editor into a comment box
+or chat input instead of a full page.
+
+### Added
+
+- **`layout: "page" | "fill"`** (+ runtime `setLayout()`) — `"fill"` stretches
+  the editor to its host's full width and height (flex column, internal
+  scroll), dropping the document-page opinions (centered `max-width` column,
+  `40vh` bottom pad) that made embedded composers look broken. `"page"`
+  (default) is unchanged.
+- **Fixed toolbar** — `toolbar: "fixed"` (or `{ mode: "fixed", items: [...] }`)
+  docks a persistent, Slack-style formatting bar above the content. It reflects
+  formatting at the caret (no selection needed), draws from the same registry
+  as the floating bar (plugin items appear automatically), disables itself in
+  read-only mode, and is switchable at runtime via `setToolbar()`. The object
+  form picks and orders the buttons; it trims the floating bar too.
+- **Toolbar registry additions** — `bulletList`, `orderedList`, and `codeBlock`
+  buttons (both toolbar modes).
+- **Emoji autocomplete** — typing `:` + two or more characters opens a filtered
+  shortcode menu (up/down navigate, Enter/Tab/click insert, Escape dismisses;
+  never in code blocks or mid-word). Fills the `autocomplete` option `emoji()`
+  reserved in 0.8.0.
+- **`defaultEmojiMap`** — `emoji()` now works with zero config: a curated
+  built-in map (~500 gemoji-standard names) exported from
+  `edodo-write/plugins`; replace it or spread-extend it with custom emoji.
+
+### Fixed (13 findings from the pre-release adversarial review)
+
+- **Key dispatch ignores IME composition** (engine-wide): Firefox/Safari
+  deliver real keys with `isComposing` during composition; Enter could split a
+  block (or commit a menu pick) under an active composition. Keydown dispatch
+  now skips composing events — the same contract input rules always followed.
+- **Suggestion menus (emoji AND tags) read LINE-local trigger text** — they now
+  open at the start of any list item and after soft line breaks (block-level
+  text concatenated sibling items with no separator, so the `(^|\s)` guard
+  refused everywhere but the first).
+- **Menu picks consume the whole token** — picking with the caret moved inside
+  the query no longer strands leftover query text after the chip, and the rows
+  refilter as the caret moves within the token.
+- **Fill layout + inner scroll**: block handles and table pills hide when the
+  content scrolls (a stale handle acted on the wrong block); the slash menu and
+  floating toolbar dismiss too; absolute chrome is clipped to the composer box;
+  the docked toolbar stacks above hover chrome; the handle gutter is wide
+  enough for the handle again.
+- **Emoji menu rows** render as buttons (no horizontal clipping) with the glyph
+  beside its name instead of pushed to opposite edges.
+- **Lifecycle**: a reused host no longer inherits the previous editor's fill
+  class (constructor toggles; destroy cleans up); `setToolbar`/`setLayout`
+  after `destroy()` are safe no-ops; `setToolbar` syncs the new bar with the
+  live selection immediately.
+
+### Changed
+
+- `spanBeforeCaret` moved to the shared DOM helpers (used by both the tags and
+  emoji suggestion menus) — no behavior change.
+
 ## 0.8.0
 
 Markdown-composer parity release: the framework-agnostic core gains the

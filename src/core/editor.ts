@@ -18,14 +18,14 @@
 
 import type {
   AnyCommand, Command, EditorContext, EditorEventName, EditorEvents,
-  EditorOptions, PayloadArgs, SelectionInfo,
+  EditorOptions, PayloadArgs, SelectionInfo, ToolbarConfig,
 } from "./types.js";
 import { createMarkdownParser } from "./parse.js";
 import { createMarkdownSerializer } from "./serialize.js";
 import { sanitizeHtml } from "./sanitize.js";
 import { runInputRules, type RuleSet } from "./input-rules.js";
 import { handleKeydown } from "./keymap.js";
-import { SelectionToolbar } from "./toolbar.js";
+import { FixedToolbar, SelectionToolbar } from "./toolbar.js";
 import { SlashMenu } from "./slash-menu.js";
 import { BlockHandles } from "./block-handles.js";
 import { TableControls } from "./table-ui.js";
@@ -48,6 +48,14 @@ import {
 
 const EMPTY_DOC = "<p><br></p>";
 const HISTORY_LIMIT = 300;
+
+/** `toolbar: true|false|"floating"|"fixed"|"none"|{mode, items}` → one shape. */
+function normalizeToolbar(opt: EditorOptions["toolbar"]): ToolbarConfig {
+  if (opt === undefined || opt === true) return { mode: "floating" };
+  if (opt === false) return { mode: "none" };
+  if (typeof opt === "string") return { mode: opt };
+  return { mode: opt.mode, items: opt.items };
+}
 const ZWSP = String.fromCharCode(0x200b);
 
 interface Snapshot { md: string; caret: number; }
@@ -55,7 +63,8 @@ interface Snapshot { md: string; caret: number; }
 export class EdodoWrite {
   readonly host: HTMLElement;
   readonly content: HTMLElement;
-  private opts: Required<Pick<EditorOptions, "placeholder" | "toolbar" | "slashMenu" | "spellcheck" | "readOnly">>;
+  private opts: Required<Pick<EditorOptions, "placeholder" | "slashMenu" | "spellcheck" | "readOnly">>;
+  private toolbarCfg: ToolbarConfig;
   private registry: PluginRegistry;
   private pipeline: MarkdownPipeline;
   private uploader: EditorOptions["uploadImage"];
@@ -63,6 +72,7 @@ export class EdodoWrite {
   private ctx: EditorContext;
   private ui: EditorUIImpl;
   private toolbar: SelectionToolbar | null = null;
+  private fixedToolbar: FixedToolbar | null = null;
   private slash: SlashMenu | null = null;
   private blockHandles: BlockHandles | null = null;
   private tableControls: TableControls | null = null;
@@ -83,10 +93,19 @@ export class EdodoWrite {
   private onInput = (e: Event) => this.handleInput(e as InputEvent);
   private onBeforeInput = (e: Event) => this.handleBeforeInput(e as InputEvent);
   private onCompositionEnd = () => { if (!this.opts.readOnly) this.handleInput(); };
-  private onKeyDown = (e: KeyboardEvent) => { if (!this.opts.readOnly) this.handleKey(e); };
+  // isComposing: during IME composition, keys belong to the IME (Firefox and
+  // Safari deliver the REAL key with isComposing=true; Chrome masks it as
+  // "Process"). Dispatching would let Enter/Backspace mutate the document
+  // under an active composition — the same contract input rules follow.
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (!this.opts.readOnly && !e.isComposing) this.handleKey(e);
+  };
   private onSelectionChange = () => this.handleSelectionChange();
   private onFocus = () => this.emit("focus");
   private onBlur = () => { this.slash?.close(); this.toolbar?.hide(); this.emit("blur"); };
+  // Inner scroll (the content is its own scroller in fill layout) moves the
+  // text out from under position-anchored UI; the page never fires this.
+  private onContentScroll = () => { this.slash?.close(); this.toolbar?.hide(); };
   private onClick = (e: MouseEvent) => this.handleClick(e);
   private onCopy = (e: ClipboardEvent) => { if (handleCopyCut(e, false, this.pipeline)) { /* copy: no mutation */ } };
   private onCut = (e: ClipboardEvent) => {
@@ -134,11 +153,11 @@ export class EdodoWrite {
     this.host = host;
     this.opts = {
       placeholder: options.placeholder ?? "Write something, or type “/” for commands…",
-      toolbar: options.toolbar ?? true,
       slashMenu: options.slashMenu ?? true,
       spellcheck: options.spellcheck ?? true,
       readOnly: options.readOnly ?? false,
     };
+    this.toolbarCfg = normalizeToolbar(options.toolbar);
     this.uploader = options.uploadImage;
 
     // Resolve plugins (throws on collisions) and build the instance pipeline.
@@ -156,6 +175,9 @@ export class EdodoWrite {
     };
 
     host.classList.add("ew");
+    // toggle, not add — a host element reused across editors (SPA remounts)
+    // must not inherit the previous instance's fill layout.
+    host.classList.toggle("ew--fill", (options.layout ?? "page") === "fill");
     if (options.className) host.classList.add(...options.className.split(/\s+/).filter(Boolean));
 
     this.content = document.createElement("div");
@@ -179,9 +201,7 @@ export class EdodoWrite {
     // Chrome (all editing UI) is created and listeners are attached
     // unconditionally; behavior is gated on the LIVE readOnly flag so
     // `setReadOnly()` can toggle a fully working editor in both directions.
-    if (this.opts.toolbar) {
-      this.toolbar = new SelectionToolbar(this.registry.toolbarItems, this.ctx);
-    }
+    this.buildToolbar();
     if (this.opts.slashMenu) {
       this.slash = new SlashMenu(this.content, this.registry.slashItems, this.ctx);
     }
@@ -198,6 +218,7 @@ export class EdodoWrite {
     this.tableControls.setEnabled(!this.opts.readOnly);
 
     this.content.addEventListener("beforeinput", this.onBeforeInput);
+    this.content.addEventListener("scroll", this.onContentScroll, { passive: true });
     this.content.addEventListener("input", this.onInput);
     this.content.addEventListener("compositionend", this.onCompositionEnd);
     this.content.addEventListener("keydown", this.onKeyDown);
@@ -435,11 +456,53 @@ export class EdodoWrite {
     this.content.setAttribute("contenteditable", readOnly ? "false" : "true");
     this.blockHandles?.setEnabled(!readOnly);
     this.tableControls?.setEnabled(!readOnly);
+    this.fixedToolbar?.setEnabled(!readOnly);
     if (readOnly) {
       this.toolbar?.hide();
       this.slash?.close();
       this.ui.closeAll();
     }
+  }
+
+  /** Build the configured toolbar(s); destroys whatever was there before. */
+  private buildToolbar(): void {
+    this.toolbar?.destroy();
+    this.toolbar = null;
+    this.fixedToolbar?.destroy();
+    this.fixedToolbar = null;
+    const cfg = this.toolbarCfg;
+    if (cfg.mode === "none") return;
+    // Explicit ids pick items in the GIVEN order; unknown ids are skipped
+    // (a plugin may be excluded per instance — a hard throw would couple the
+    // items list to the plugin set).
+    const items = cfg.items
+      ? cfg.items
+          .map((id) => this.registry.toolbarItems.find((it) => it.id === id))
+          .filter((it): it is NonNullable<typeof it> => !!it)
+      : this.registry.toolbarItems;
+    if (cfg.mode === "floating") {
+      this.toolbar = new SelectionToolbar(items, this.ctx);
+    } else {
+      this.fixedToolbar = new FixedToolbar(items, this.ctx, this.host, this.content);
+      this.fixedToolbar.setEnabled(!this.opts.readOnly);
+      this.fixedToolbar.update(this.buildSelectionInfo());
+    }
+  }
+
+  /** Switch the toolbar mode / button set at runtime. */
+  setToolbar(toolbar: EditorOptions["toolbar"]): void {
+    if (this.destroyed) return;
+    this.toolbarCfg = normalizeToolbar(toolbar);
+    this.buildToolbar();
+    // Sync the new bar with the LIVE selection — a floating bar swapped in
+    // over an active selection must appear now, not on the next caret move.
+    this.handleSelectionChange();
+  }
+
+  /** Switch between the document ("page") and embedded ("fill") layouts. */
+  setLayout(layout: "page" | "fill"): void {
+    if (this.destroyed) return;
+    this.host.classList.toggle("ew--fill", layout === "fill");
   }
 
   on<K extends EditorEventName>(event: K, handler: EditorEvents[K]): () => void {
@@ -461,6 +524,7 @@ export class EdodoWrite {
       if (plugin.on?.destroy) guard(plugin.name, "on.destroy", () => plugin.on!.destroy!(this.ctx));
     }
     this.content.removeEventListener("beforeinput", this.onBeforeInput);
+    this.content.removeEventListener("scroll", this.onContentScroll);
     this.content.removeEventListener("input", this.onInput);
     this.content.removeEventListener("compositionend", this.onCompositionEnd);
     this.content.removeEventListener("keydown", this.onKeyDown);
@@ -474,11 +538,13 @@ export class EdodoWrite {
     this.content.removeEventListener("click", this.onClick);
     document.removeEventListener("selectionchange", this.onSelectionChange);
     this.toolbar?.destroy();
+    this.fixedToolbar?.destroy();
     this.slash?.destroy();
     this.blockHandles?.destroy();
     this.tableControls?.destroy();
     this.ui.destroy();
     if (this.changeTimer) clearTimeout(this.changeTimer);
+    this.host.classList.remove("ew--fill");
     this.content.remove();
     (["change", "selection", "focus", "blur"] as EditorEventName[]).forEach((e) => this.listeners[e].clear());
   }
@@ -754,7 +820,10 @@ export class EdodoWrite {
   private handleSelectionChange(): void {
     if (this.destroyed) return;
     const info = this.buildSelectionInfo();
-    if (this.opts.toolbar && !this.opts.readOnly) this.toolbar?.update(info);
+    if (!this.opts.readOnly) {
+      this.toolbar?.update(info);
+      this.fixedToolbar?.update(info);
+    }
     this.updateBlockPlaceholder(info);
     this.listeners.selection.forEach((fn) => fn(info));
   }

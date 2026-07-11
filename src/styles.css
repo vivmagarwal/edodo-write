@@ -90,6 +90,28 @@
 .ew-content--readonly { padding-left: 0.25rem; }
 .ew-content--readonly { padding-bottom: 1rem; }
 
+/* Fill layout (embedded composers): the editor takes whatever box the host
+   gives it — full width, no centered column, no document-length bottom pad.
+   Flex column so a fixed toolbar docks above a content area that stretches. */
+.ew--fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Absolute chrome (drop-line, drag handle) must never paint outside the
+     composer box the host gave us. Page mode stays unclipped. */
+  overflow: hidden;
+}
+.ew--fill .ew-content {
+  flex: 1 1 auto;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+  /* 2.5rem: the 37px handle + its 2px text gap must fit (page mode: 2.75rem) */
+  padding: 0.375rem 0.5rem 0.75rem 2.5rem;
+  overflow-y: auto;
+}
+.ew--fill .ew-content--readonly { padding-left: 0.5rem; }
+
 /* ── Block handle (hover gutter: + and drag grip) ─────────────────────────── */
 .ew-block-handle {
   position: absolute;
@@ -272,6 +294,37 @@ body.ew-dragging-active { cursor: grabbing !important; user-select: none !import
 .ew-toolbar__btn[data-cmd="italic"] { font-style: italic; }
 .ew-toolbar__btn[data-cmd="strike"] { text-decoration: line-through; }
 .ew-toolbar__btn[data-cmd="code"] { font-family: var(--ew-font-mono); font-size: 11px; }
+.ew-toolbar__btn[data-cmd="codeBlock"] { font-family: var(--ew-font-mono); font-size: 11px; }
+
+/* ── Fixed toolbar (docked, Slack-style) ──────────────────────────────────── */
+/* Shares .ew-toolbar__btn with the floating bar; the floating bar is dark
+   (it floats over arbitrary content), the docked bar matches the surface. */
+.ew-fixed-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--ew-border);
+  font-family: var(--ew-font);
+  /* Above the hover chrome (handles z-20, pills z-21): a pill computed for a
+     partly-scrolled-out table must not paint over (or steal clicks from) the
+     docked bar. Opaque for the same reason. */
+  position: relative;
+  z-index: 30;
+  background: var(--ew-bg);
+}
+.ew-fixed-toolbar .ew-toolbar__btn { color: var(--ew-fg-muted); }
+.ew-fixed-toolbar .ew-toolbar__btn:hover { background: var(--ew-bg-subtle); color: var(--ew-fg); }
+.ew-fixed-toolbar .ew-toolbar__btn.is-active { color: var(--ew-accent); background: var(--ew-accent-soft); }
+.ew-fixed-toolbar--disabled .ew-toolbar__btn { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* Emoji suggestion rows (inside the shared .ew-menu popover). The shared
+   row rule justifies space-between (title left / hint right); an emoji row
+   is glyph+name side by side. */
+/* doubled class: the shared .ew-menu__item rule appears LATER in this sheet */
+.ew-menu__item.ew-menu__item--emoji { justify-content: flex-start; }
+.ew-emoji-menu__glyph { width: 1.5em; margin-right: 6px; text-align: center; flex: none; }
 
 /* ── Slash menu ───────────────────────────────────────────────────────────── */
 .ew-slash {

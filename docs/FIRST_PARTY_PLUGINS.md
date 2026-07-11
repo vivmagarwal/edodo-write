@@ -34,7 +34,7 @@ editor.destroy();
 | [`math()`](#math) | TeX equations, inline + block | `$x^2$` / `$$…$$` | `katex` |
 | [`diagrams()` / `edodoDraw()`](#diagrams-and-edododraw) | live diagram widgets | fenced code blocks | `edododraw` |
 | [`tags()`](#tags) | `#tag` / `@mention` chips from *your* source | plain GFM links / text | — |
-| [`emoji()`](#emoji) | `:shortcode:` ↔ glyph chips from *your* map | `:rocket:` (plain text) | — |
+| [`emoji()`](#emoji) | `:shortcode:` ↔ glyph chips + `:` autocomplete (built-in map, or yours) | `:rocket:` (plain text) | — |
 | [`embeds()`](#embeds) | video / audio / bookmark embeds | a bare URL line | — |
 | [`footnote()`](#footnote) | `[^id]` references + definitions | `see[^1]` / `[^1]: note` | — |
 | [`file()`](#file) | file-attachment chips (+ optional unfurl) | `!file[name](url)` | — |
@@ -520,33 +520,50 @@ assert.equal(codec.serialize(ghost), "bye @[Alice](u_ghost)"); // → the ORIGIN
 
 ## emoji()
 
-`:shortcode:` ↔ a glyph chip, driven by **your** map — the package ships none.
+`:shortcode:` ↔ a glyph chip, plus a Slack-style suggestion menu: typing `:`
+followed by **two or more** characters opens a filtered shortcode list —
+↑/↓ navigate, Enter/Tab/click insert, Escape dismisses. The menu never opens
+inside code blocks or mid-word (`12:30` stays quiet), and it uses the same
+popover machinery as the tags() mention menu.
+
 The stored form is the shortcode itself (`:rocket:`), so the Markdown stays
 lossless plain text. The visible node is the glyph, but a paired
 marked + turndown extension keeps the shortcode on the chip
 (`data-shortcode`) so it round-trips byte-stable. An **unknown** shortcode is
-left completely alone (`:nope:` survives verbatim), and times like `12:30:45`
-are never hijacked.
+left completely alone (`:nope:` survives verbatim).
+
+Works with zero config: the default map is the built-in `defaultEmojiMap`, a
+curated set (~500 entries) of the most-used **gemoji-standard** names, so
+`:rocket:` means the same thing here, on GitHub, Slack and Discord. Hosts
+replace it wholesale or extend it — custom (host-specific) emoji are just
+extra keys.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `map` | `Record<string, string>` | — (required) | shortcode → glyph (e.g. `{ rocket: "🚀" }`). Looked up lowercased. |
+| `map` | `Record<string, string>` | `defaultEmojiMap` | shortcode → glyph (e.g. `{ rocket: "🚀" }`). Looked up lowercased. |
 | `trigger` | `string` | `":"` | Delimiter character. |
+| `autocomplete` | `boolean` | `true` | The `:query` suggestion menu (prefix matches rank first, then substring; 8 rows max). |
 | `storedForm` | `"shortcode" \| "unicode"` | `"shortcode"` | `"unicode"` serialises the bare glyph instead of `:name:`. |
 | `render` | `(glyph, code) => Node` | `span.ew-emoji` | Custom chip node for typed and stored emoji. |
-| `autocomplete` / `picker` | `boolean` | `true` | Reserved for the `:query` suggestion menu and browse-all picker (contract accepted now). |
+| `picker` | `boolean` | `true` | Reserved for the browse-all picker panel (contract accepted now). |
 
 ```ts
 import { strict as assert } from "node:assert";
 import { createCodec, assertRoundTrip } from "edodo-write/testing";
-import { emoji } from "edodo-write/plugins";
+import { emoji, defaultEmojiMap } from "edodo-write/plugins";
 
-const codec = createCodec([emoji({ map: { rocket: "🚀", tada: "🎉" } })]);
+// Zero config: the built-in gemoji-standard map.
+const zero = createCodec([emoji()]);
+assertRoundTrip(zero, "ship it :rocket: :+1: :tada:");
+assert.ok(defaultEmojiMap.rocket === "🚀");
+
+// Or bring your own map — extend the default with custom emoji.
+const codec = createCodec([emoji({ map: { ...defaultEmojiMap, shipit: "🐿️" } })]);
 
 // Known shortcodes become glyph chips that carry the shortcode…
-const html = codec.parse("ship it :rocket:");
+const html = codec.parse("ship it :shipit:");
 assert.ok(html.includes('class="ew-emoji"'));
-assert.ok(html.includes('data-shortcode="rocket"'));
+assert.ok(html.includes('data-shortcode="shipit"'));
 // …and round-trip byte-stable, while unknown codes and times survive verbatim.
 assertRoundTrip(codec, "ship it :rocket: 🎉");
 assertRoundTrip(codec, "nah :nope: at 12:30:45");

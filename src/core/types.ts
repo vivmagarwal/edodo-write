@@ -413,6 +413,19 @@ export type ImageUploader = (file: File, editor: EdodoWrite) => Promise<ImageUpl
 
 // ── Options ─────────────────────────────────────────────────────────────────
 
+/** Where the formatting toolbar lives (or that there is none). */
+export type ToolbarMode = "floating" | "fixed" | "none";
+
+/** Object form of the `toolbar` option: pick the mode AND the buttons. */
+export interface ToolbarConfig {
+  mode: ToolbarMode;
+  /**
+   * Item ids to show, in this order (from the toolbar registry: core preset +
+   * plugins). Omitted: every registered item. Unknown ids are skipped.
+   */
+  items?: string[];
+}
+
 export interface EditorOptions {
   /** Initial Markdown value. */
   value?: string;
@@ -422,8 +435,22 @@ export interface EditorOptions {
   autofocus?: boolean;
   /** Render-only mode — no editing, no toolbars. Toggleable at runtime. */
   readOnly?: boolean;
-  /** Show the floating selection toolbar (Medium-style). Default: true. */
-  toolbar?: boolean;
+  /**
+   * Formatting toolbar. `"floating"` (default; also `true`) shows the
+   * Medium-style selection toolbar; `"fixed"` docks a persistent, Slack-style
+   * bar above the content; `"none"` (also `false`) shows neither. The object
+   * form also picks WHICH buttons appear. Toggleable at runtime via
+   * `setToolbar()`.
+   */
+  toolbar?: boolean | ToolbarMode | ToolbarConfig;
+  /**
+   * How the editor occupies its host element. `"page"` (default) is the
+   * document look: a centered column capped at `--ew-content-width` with a
+   * long bottom pad so clicking anywhere below the text appends. `"fill"`
+   * stretches to the host's full width and height — the mode for embedded
+   * composers (comment boxes, chat inputs). Toggleable via `setLayout()`.
+   */
+  layout?: "page" | "fill";
   /** Enable the `/` slash command menu (Notion-style). Default: true. */
   slashMenu?: boolean;
   /** Native browser spellcheck. Default: true. */

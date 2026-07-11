@@ -39,6 +39,8 @@ export {
 
 export type {
   EditorOptions,
+  ToolbarMode,
+  ToolbarConfig,
   EditorEvents,
   EditorEventName,
   SelectionInfo,

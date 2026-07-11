@@ -30,6 +30,9 @@ export class BlockHandles {
 
   private onRootMove = (e: MouseEvent) => this.trackHover(e);
   private onRootLeave = () => { if (!this.dragging) this.hide(); };
+  // Inner scroll (fill layout) moves blocks under the host-anchored handle —
+  // a stale handle acts on the WRONG block. Hide; the next hover re-arms.
+  private onRootScroll = () => { if (!this.dragging) this.hide(); };
   private onDocPointerMove = (e: PointerEvent) => this.dragMove(e);
   private onDocPointerUp = (e: PointerEvent) => this.dragEnd(e);
 
@@ -58,6 +61,7 @@ export class BlockHandles {
     grip.addEventListener("pointerdown", (e) => this.dragStart(e as PointerEvent));
 
     root.addEventListener("mousemove", this.onRootMove);
+    root.addEventListener("scroll", this.onRootScroll, { passive: true });
     host.addEventListener("mouseleave", this.onRootLeave);
     this.handle.addEventListener("mouseenter", () => {
       // Zeroing matters: a cancelled id left in `raf` would dead-lock
@@ -215,6 +219,7 @@ export class BlockHandles {
 
   destroy(): void {
     this.root.removeEventListener("mousemove", this.onRootMove);
+    this.root.removeEventListener("scroll", this.onRootScroll);
     this.host.removeEventListener("mouseleave", this.onRootLeave);
     document.removeEventListener("pointermove", this.onDocPointerMove);
     document.removeEventListener("pointerup", this.onDocPointerUp);

@@ -10,10 +10,13 @@
  *   ?exclude=a,b        core-preset feature keys to remove
  *   ?upload=mock|fail   image uploader stub (mock: resolves a CDN-ish URL
  *                       after 150 ms; fail: rejects). Omitted: data-URL fallback.
+ *   ?layout=fill        fill layout (default: page)
+ *   ?toolbar=fixed|none toolbar mode (default: floating); ?toolbarItems=a,b
+ *                       picks the buttons.
  */
 import "../styles.css";
-import { EdodoWrite, type EdodoPlugin, type ImageUploader } from "../lib/index.js";
-import { highlight, callout, math, diagrams, edodoDraw, tags, embeds } from "../plugins/index.js";
+import { EdodoWrite, type EdodoPlugin, type ImageUploader, type ToolbarConfig } from "../lib/index.js";
+import { highlight, callout, math, diagrams, edodoDraw, tags, embeds, emoji } from "../plugins/index.js";
 
 declare global {
   interface Window {
@@ -67,6 +70,8 @@ const AVAILABLE: Record<string, () => EdodoPlugin> = {
       },
     }),
   embeds: () => embeds(),
+  // Default (built-in) map — the zero-config path users get.
+  emoji: () => emoji(),
 };
 
 const params = new URLSearchParams(location.search);
@@ -94,6 +99,13 @@ if (uploadMode === "mock") {
   };
 }
 
+const toolbarMode = params.get("toolbar");
+const toolbarItems = (params.get("toolbarItems") ?? "").split(",").filter(Boolean);
+let toolbar: ToolbarConfig | undefined;
+if (toolbarMode === "fixed" || toolbarMode === "none" || toolbarMode === "floating") {
+  toolbar = { mode: toolbarMode, items: toolbarItems.length ? toolbarItems : undefined };
+}
+
 const host = document.getElementById("host")!;
 window.EdodoWrite = EdodoWrite;
 window.editor = new EdodoWrite(host, {
@@ -102,4 +114,6 @@ window.editor = new EdodoWrite(host, {
   plugins,
   exclude: exclude.length ? exclude : undefined,
   uploadImage,
+  layout: params.get("layout") === "fill" ? "fill" : undefined,
+  toolbar,
 });

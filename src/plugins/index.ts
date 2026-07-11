@@ -14,6 +14,7 @@ export { math, type MathOptions } from "./math.js";
 export { diagrams, edodoDraw, type DiagramsOptions, type DiagramRenderer, type EdodoDrawOptions } from "./diagrams.js";
 export { tags, type TagsOptions, type TagItem, type TagTokenItem, type ResolveMention } from "./tags.js";
 export { emoji, type EmojiOptions } from "./emoji.js";
+export { defaultEmojiMap } from "./emoji-map.js";
 export { embeds, type EmbedsOptions, type EmbedMetadata } from "./embeds.js";
 export { footnote } from "./footnote.js";
 export { file, type FileOptions, type FileUploader, type FileUploadResult } from "./file.js";

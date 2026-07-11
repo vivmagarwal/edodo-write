@@ -195,6 +195,9 @@ export function corePreset(): EdodoPlugin {
       { id: "heading1", label: "H1", title: "Heading 1", command: "heading1" },
       { id: "heading2", label: "H2", title: "Heading 2", command: "heading2" },
       { id: "blockquote", label: "❝", title: "Quote", command: "blockquote" },
+      { id: "bulletList", label: "•–", title: "Bulleted list", command: "bulletList" },
+      { id: "orderedList", label: "1.", title: "Numbered list", command: "orderedList" },
+      { id: "codeBlock", label: "{ }", title: "Code block", command: "codeBlock" },
     ],
 
     blockMenuItems: [

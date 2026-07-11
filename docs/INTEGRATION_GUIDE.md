@@ -37,7 +37,8 @@ editor.destroy();
 | `placeholder` | `string` | `"Write something, or type “/” for commands…"` | Shown when the document is empty. |
 | `autofocus` | `boolean` | `false` | Focus after mount (ignored when read-only). |
 | `readOnly` | `boolean` | `false` | Render-only; no editing UI. Toggleable at runtime via `setReadOnly`. |
-| `toolbar` | `boolean` | `true` | Floating selection toolbar. |
+| `toolbar` | `boolean \| "floating" \| "fixed" \| "none" \| { mode, items? }` | `"floating"` | The formatting toolbar. `"floating"` (also `true`) is the Medium-style selection bar; `"fixed"` docks a persistent Slack-style bar above the content that reflects the caret's formatting even with nothing selected; `"none"` (also `false`) shows neither. The object form also picks WHICH buttons appear, in order — e.g. `{ mode: "fixed", items: ["bold", "italic", "link"] }` (ids come from the toolbar registry: core preset + plugins; unknown ids are skipped). Switch at runtime with `setToolbar()`. |
+| `layout` | `"page" \| "fill"` | `"page"` | How the editor occupies its host. `"page"` is the document look: a centered column capped at `--ew-content-width` with a long bottom pad (clicking below the text appends). `"fill"` stretches to the host's full width **and height** (flex column, so a fixed toolbar docks on top) — the mode for embedded composers: comment boxes, chat inputs, form fields. Switch at runtime with `setLayout()`. |
 | `slashMenu` | `boolean` | `true` | `/` slash command menu. |
 | `spellcheck` | `boolean` | `true` | Native browser spellcheck. |
 | `className` | `string` | — | Extra class(es) on the host. |
@@ -61,6 +62,8 @@ editor.destroy();
 | `transact(fn)` | `T` | Batch DOM mutations into **one** undo step and **one** change event. Re-entrant. |
 | `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z, ⌘/Ctrl+Y). |
 | `setReadOnly(bool)` | `void` | Toggle editing at runtime — works in both directions. |
+| `setToolbar(toolbar)` | `void` | Swap the toolbar mode / button set at runtime (same values as the `toolbar` option). |
+| `setLayout("page" \| "fill")` | `void` | Swap the layout at runtime (same values as the `layout` option). |
 | `on(event, handler)` | `() => void` | Subscribe; returns an unsubscribe function. |
 | `off(event, handler)` | `void` | Unsubscribe. |
 | `destroy()` | `void` | Run plugin cleanups, remove all DOM, listeners and floating UI. |
@@ -459,6 +462,47 @@ On by default whenever the editor is editable:
 Disable the toolbar or slash menu with `toolbar: false` / `slashMenu: false`,
 or remove individual features with `exclude`. Clipboard, drag, undo and the
 normaliser are intrinsic to the editing model and always on in edit mode.
+
+## Embedding as a composer (comment box, chat input)
+
+The default look is a document page: a centered column with a long bottom pad.
+When the editor replaces a `<textarea>` inside YOUR box — a comment form, a
+chat composer — switch both dials:
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const box = document.createElement("div"); // the app's composer box
+box.style.height = "160px";
+document.body.appendChild(box);
+
+const editor = new EdodoWrite(box, {
+  placeholder: "Share your thoughts…",
+  layout: "fill",                                       // take the box's width AND height
+  toolbar: { mode: "fixed", items: ["bold", "italic", "strike", "link", "bulletList", "orderedList", "code"] },
+});
+
+assert.ok(box.classList.contains("ew--fill"));
+const bar = box.querySelector(".ew-fixed-toolbar")!;
+assert.equal(bar.querySelectorAll("button").length, 7);
+assert.equal(bar.nextElementSibling, editor.content);   // toolbar docks above the content
+
+editor.setLayout("page");                               // both dials flip at runtime
+assert.equal(box.classList.contains("ew--fill"), false);
+editor.setToolbar("floating");
+assert.equal(box.querySelector(".ew-fixed-toolbar"), null);
+editor.destroy();
+```
+
+`"fill"` drops the page opinions — no centered `max-width` column, no `40vh`
+bottom pad — and lays the host out as a flex column, so the fixed toolbar
+docks on top and the content area stretches to whatever height the box has
+(scrolling internally when the text outgrows it). The fixed toolbar reflects
+formatting **at the caret** (no selection needed), disables itself in
+read-only mode, and draws from the same registry as the floating bar — items
+contributed by plugins appear automatically, and `items` picks and orders the
+buttons per instance.
 
 ## Read-only
 

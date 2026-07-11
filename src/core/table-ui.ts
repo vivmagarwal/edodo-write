@@ -45,6 +45,9 @@ export class TableControls {
 
   private onRootMove = (e: MouseEvent) => this.trackHover(e);
   private onRootLeave = () => this.scheduleHide();
+  // Inner scroll (fill layout) moves the table under the host-anchored pills —
+  // stale pills float over the wrong cells (or the docked toolbar). Hide now.
+  private onRootScroll = () => { this.cancelHide(); this.hide(); };
 
   constructor(
     private root: HTMLElement,
@@ -93,6 +96,7 @@ export class TableControls {
 
     root.addEventListener("mousemove", this.onRootMove);
     root.addEventListener("mouseleave", this.onRootLeave);
+    root.addEventListener("scroll", this.onRootScroll, { passive: true });
   }
 
   setEnabled(enabled: boolean): void {
@@ -103,6 +107,7 @@ export class TableControls {
   destroy(): void {
     this.root.removeEventListener("mousemove", this.onRootMove);
     this.root.removeEventListener("mouseleave", this.onRootLeave);
+    this.root.removeEventListener("scroll", this.onRootScroll);
     if (this.raf) cancelAnimationFrame(this.raf);
     if (this.hideTimer) clearTimeout(this.hideTimer);
     this.colHandle.remove();

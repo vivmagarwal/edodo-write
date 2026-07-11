@@ -54,6 +54,7 @@ Details, options and worked examples:
 | `$x^2$` and `$$…$$` blocks | `math()` | TeX between dollars — GitHub renders both natively |
 | ` ```edd ` / ` ```mermaid ` fences | `edodoDraw()` / `diagrams()` | a plain fenced code block — GitHub renders mermaid natively |
 | `#tag` → suggestion menu | `tags()` | a plain GFM link `[#tag](href)`, or plain text — zero new syntax |
+| `:shortcode:` and `:` + 2 chars → suggestion menu | `emoji()` | the `:shortcode:` token — the convention GitHub/Slack/Discord all read |
 | a paragraph that is one bare URL | `embeds()` | the bare URL line — a clickable autolink everywhere else |
 
 ## Slash menu

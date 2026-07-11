@@ -22,6 +22,7 @@
 import type { MarkedExtension } from "marked";
 import type TurndownService from "turndown";
 import { scrollRowIntoList } from "../core/ui.js";
+import { lineTextBeforeCaret, spanBeforeCaret } from "../core/dom.js";
 import { definePlugin, type EdodoPlugin, type EditorContext } from "../lib/index.js";
 import type { MarkdownExtensionSpec } from "../core/types.js";
 import { escapeAttr } from "./widget.js";
@@ -138,10 +139,15 @@ export function tags(options: TagsOptions): EdodoPlugin {
     item.href ?? (options.href ? options.href(item) : null);
 
   const matchAtCaret = (ctx: EditorContext): { block: HTMLElement; query: string } | null => {
-    const block = ctx.dom.currentBlock();
-    if (!block || block.tagName === "PRE") return null; // never inside code blocks
-    const m = triggerRe.exec(ctx.dom.textBeforeCaret(block));
-    return m ? { block, query: m[2] } : null;
+    const top = ctx.dom.currentBlock();
+    if (!top || top.tagName === "PRE") return null; // never inside code blocks
+    // LINE-local text (nearest <li>, restarted after <br>) — block-level text
+    // concatenates sibling list items with no separator, so the `(^|\s)`
+    // guard would see the previous item's last word before the trigger.
+    const at = lineTextBeforeCaret(ctx.root);
+    if (!at) return null;
+    const m = triggerRe.exec(at.text);
+    return m ? { block: at.line, query: m[2] } : null;
   };
 
   const closeMenu = (): void => {
@@ -286,6 +292,16 @@ export function tags(options: TagsOptions): EdodoPlugin {
     ctx.transact(() => {
       const range = spanBeforeCaret(at.block, span);
       if (!range) return;
+      // The caret may sit INSIDE the token (ArrowLeft, then Enter): consume
+      // the token tail after the caret too, or the pick strands stray query
+      // text right after the chip.
+      const end = range.endContainer;
+      if (end.nodeType === Node.TEXT_NODE) {
+        const data = (end as Text).data;
+        let o = range.endOffset;
+        while (o < data.length && /[\w-]/.test(data[o])) o += 1;
+        range.setEnd(end, o);
+      }
       range.deleteContents();
       // Trailing typed spaces reach the DOM as NBSP; inserting the same form
       // keeps the caret placeable after the chip. The serializer's tidy pass
@@ -463,17 +479,20 @@ export function tags(options: TagsOptions): EdodoPlugin {
     },
 
     // Bindings act ONLY while the menu is open — otherwise they return false
-    // and fall through to the next binding / the structural engine.
+    // and fall through to the next binding / the structural engine. Every
+    // binding ignores IME composition keydowns (Firefox/Safari deliver the
+    // real key with isComposing=true; consuming it would navigate the menu
+    // instead of the IME candidate list, or commit a pick mid-composition).
     keymap: {
-      ArrowDown: () => move(1),
-      ArrowUp: () => move(-1),
-      Enter: (ctx) => {
-        if (!state) return false;
+      ArrowDown: (_ctx, e) => !e.isComposing && move(1),
+      ArrowUp: (_ctx, e) => !e.isComposing && move(-1),
+      Enter: (ctx, e) => {
+        if (!state || e.isComposing) return false;
         pick(ctx, state.entries[state.index]);
         return true;
       },
-      Escape: () => {
-        if (!state) return false;
+      Escape: (_ctx, e) => {
+        if (!state || e.isComposing) return false;
         closeMenu();
         return true;
       },
@@ -485,9 +504,13 @@ export function tags(options: TagsOptions): EdodoPlugin {
         if (tokenMode) decorateMentions(ctx);
       },
       // Caret left the trigger span (click elsewhere, arrow-left past the
-      // trigger, selection left the editor) → close.
+      // trigger, selection left the editor) → close. Still inside it
+      // (ArrowLeft within the query) → REFILTER, so the rows always match
+      // what a pick would consume.
       selection: (info, ctx) => {
-        if (state && (!info || !matchAtCaret(ctx))) closeMenu();
+        if (!state) return;
+        if (!info || !matchAtCaret(ctx)) closeMenu();
+        else syncMenu(ctx);
       },
       blur: () => closeMenu(),
     },
@@ -512,42 +535,3 @@ function tagChip(href: string, text: string): HTMLAnchorElement {
   return a;
 }
 
-/**
- * The range covering the last `count` visible characters before the caret.
- * This is the MID-LINE sibling of `deleteLeadingChars` (which anchors forward
- * from the block start): it walks BACKWARD from the caret across text nodes,
- * skipping ZWSP caret furniture so the count matches the normalized text the
- * trigger regex ran against.
- */
-function spanBeforeCaret(block: HTMLElement, count: number): Range | null {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return null;
-  const caret = sel.getRangeAt(0);
-  if (!caret.collapsed || !block.contains(caret.startContainer)) return null;
-  // The span is contiguously typed text, so the caret sits in a text node;
-  // anything else means the document changed under us — refuse, don't guess.
-  if (caret.startContainer.nodeType !== Node.TEXT_NODE) return null;
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  const texts: Text[] = [];
-  let t: Node | null;
-  while ((t = walker.nextNode())) texts.push(t as Text);
-  let node = caret.startContainer as Text;
-  let offset = caret.startOffset;
-  let remaining = count;
-  for (;;) {
-    const data = node.data;
-    while (offset > 0 && remaining > 0) {
-      offset -= 1;
-      if (data[offset] !== ZWSP) remaining -= 1;
-    }
-    if (remaining === 0) break;
-    const prev = texts.indexOf(node) - 1;
-    if (prev < 0) return null;
-    node = texts[prev];
-    offset = node.data.length;
-  }
-  const range = document.createRange();
-  range.setStart(node, offset);
-  range.setEnd(caret.startContainer, caret.startOffset);
-  return range;
-}

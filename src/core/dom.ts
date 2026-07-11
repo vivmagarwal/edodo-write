@@ -99,6 +99,43 @@ export function isAtBlockStart(block: HTMLElement): boolean {
   return textBeforeCaret(block).length === 0;
 }
 
+/**
+ * Plain text of the current LINE up to the caret, with the container it was
+ * measured in. Trigger matchers (`(^|\s)#…`, `(^|\s):…`) need LINE-local text:
+ * `textBeforeCaret` over a top-level block concatenates sibling list items'
+ * text with no separator (Range.toString adds nothing at element boundaries),
+ * so at the start of the second `<li>` the previous item's last word sits
+ * directly before the trigger and the guard refuses. Anchors to the nearest
+ * `<li>` when inside a list, and restarts after the last `<br>` (a soft line
+ * break starts a new visual line). NBSP-normalized and ZWSP-free, same as the
+ * `ctx.dom.textBeforeCaret` facade.
+ */
+export function lineTextBeforeCaret(
+  root: HTMLElement,
+): { line: HTMLElement; text: string } | null {
+  const block = currentBlock(root);
+  if (!block) return null;
+  const line = currentListItem(root) ?? block;
+  const range = getRange();
+  if (!range || !line.contains(range.startContainer)) return null;
+  const pre = range.cloneRange();
+  pre.selectNodeContents(line);
+  pre.setEnd(range.startContainer, range.startOffset);
+  let text = "";
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeName === "BR") text = "";
+      else if (child.nodeType === Node.TEXT_NODE) text += (child as Text).data;
+      else walk(child);
+    }
+  };
+  walk(pre.cloneContents());
+  return {
+    line,
+    text: text.replace(/\u00a0/g, " ").split("\u200b").join(""),
+  };
+}
+
 /** Is `block` effectively empty (no text, no media)? */
 export function isBlockEmpty(block: HTMLElement): boolean {
   const text = block.textContent ?? "";
@@ -251,4 +288,44 @@ export function createElement(tag: string, attrs: Record<string, string> = {}, h
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   if (html !== undefined) el.innerHTML = html;
   return el;
+}
+
+/**
+ * The range covering the last `count` visible characters before the caret.
+ * This is the MID-LINE sibling of `deleteLeadingChars` (which anchors forward
+ * from the block start): it walks BACKWARD from the caret across text nodes,
+ * skipping ZWSP caret furniture so the count matches the normalized text the
+ * trigger regex ran against.
+ */
+export function spanBeforeCaret(block: HTMLElement, count: number): Range | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const caret = sel.getRangeAt(0);
+  if (!caret.collapsed || !block.contains(caret.startContainer)) return null;
+  // The span is contiguously typed text, so the caret sits in a text node;
+  // anything else means the document changed under us — refuse, don't guess.
+  if (caret.startContainer.nodeType !== Node.TEXT_NODE) return null;
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  let t: Node | null;
+  while ((t = walker.nextNode())) texts.push(t as Text);
+  let node = caret.startContainer as Text;
+  let offset = caret.startOffset;
+  let remaining = count;
+  for (;;) {
+    const data = node.data;
+    while (offset > 0 && remaining > 0) {
+      offset -= 1;
+      if (data[offset] !== ZWSP) remaining -= 1;
+    }
+    if (remaining === 0) break;
+    const prev = texts.indexOf(node) - 1;
+    if (prev < 0) return null;
+    node = texts[prev];
+    offset = node.data.length;
+  }
+  const range = document.createRange();
+  range.setStart(node, offset);
+  range.setEnd(caret.startContainer, caret.startOffset);
+  return range;
 }
