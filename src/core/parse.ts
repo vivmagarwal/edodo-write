@@ -13,14 +13,17 @@
  */
 
 import { Marked, type MarkedExtension } from "marked";
+import { parseDocument, DomUtils } from "htmlparser2";
+import render from "dom-serializer";
+import { isTag, type Element } from "domhandler";
 import { sanitizeHtml, type SanitizeOptions } from "./sanitize.js";
 
 export interface ParseOptions {
   /**
-   * Run the output through the built-in sanitiser (requires a DOM — always
-   * available in browsers and in jsdom/happy-dom tests). Set `false` for a
-   * DOM-free, trusted-input SSR path that returns raw `marked` HTML.
-   * Default: true.
+   * Run the output through the built-in sanitiser. The sanitiser is DOM-free,
+   * so it runs everywhere (browsers, jsdom/happy-dom tests, and bare Node /
+   * SSR). Set `false` for a trusted-input fast path that returns raw `marked`
+   * HTML. Default: true.
    */
   sanitize?: boolean;
   /**
@@ -39,7 +42,9 @@ export function createMarkdownParser(
   for (const ext of extensions) marked.use(ext);
   return (md: string, opts: ParseOptions = {}) => {
     const raw = String(marked.parse(md ?? "", { async: false }));
-    if (opts.sanitize === false || typeof DOMParser === "undefined") return raw;
+    // The sanitiser is DOM-free — it ALWAYS runs (browser, jsdom, or bare
+    // Node/SSR) unless the caller opts into the trusted-input fast path.
+    if (opts.sanitize === false) return raw;
     const clean = sanitizeHtml(raw, sanitizeOptions);
     return opts.decorateTasks === false ? clean : decorateTaskLists(clean);
   };
@@ -55,25 +60,42 @@ export function parseMarkdown(md: string, opts: ParseOptions = {}): string {
   return defaultParse(md, opts);
 }
 
+/** Add a class to an element's `class` attribute (deduped, like classList). */
+function addClass(el: Element, cls: string): void {
+  const classes = (el.attribs.class ?? "").split(/\s+/).filter(Boolean);
+  if (!classes.includes(cls)) classes.push(cls);
+  el.attribs.class = classes.join(" ");
+}
+
 /**
  * Add `contains-task-list` / `task-list-item` classes to GFM task lists so
- * they can be styled and located. DOM-based; call only where a DOM exists.
+ * they can be styled and located. DOM-free — safe in bare Node / SSR.
  */
 export function decorateTaskLists(html: string): string {
-  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-  const root = doc.body.firstElementChild as HTMLElement | null;
-  if (!root) return html;
-  root.querySelectorAll('li > input[type="checkbox"], li > p > input[type="checkbox"]').forEach((input) => {
-    const li = input.closest("li");
-    if (!li) return;
-    // GFM renders task checkboxes `disabled`; the editor makes them interactive.
-    input.removeAttribute("disabled");
-    li.classList.add("task-list-item");
-    li.setAttribute("data-task", input.hasAttribute("checked") ? "done" : "todo");
-    const list = li.parentElement;
-    if (list && (list.tagName === "UL" || list.tagName === "OL")) {
-      list.classList.add("contains-task-list");
+  const doc = parseDocument(html ?? "", { decodeEntities: true });
+  const inputs = DomUtils.findAll(
+    (el) => el.name === "input" && el.attribs.type === "checkbox",
+    doc.children,
+  );
+  for (const input of inputs) {
+    // The checkbox must sit directly in an <li>, or in a <p> directly in an <li>.
+    let li: Element | null = null;
+    const parent = input.parent;
+    if (parent && isTag(parent)) {
+      if (parent.name === "li") li = parent;
+      else if (parent.name === "p" && parent.parent && isTag(parent.parent) && parent.parent.name === "li") {
+        li = parent.parent;
+      }
     }
-  });
-  return root.innerHTML;
+    if (!li) continue;
+    // GFM renders task checkboxes `disabled`; the editor makes them interactive.
+    delete input.attribs.disabled;
+    addClass(li, "task-list-item");
+    li.attribs["data-task"] = "checked" in input.attribs ? "done" : "todo";
+    const list = li.parent;
+    if (list && isTag(list) && (list.name === "ul" || list.name === "ol")) {
+      addClass(list, "contains-task-list");
+    }
+  }
+  return render(doc.children, { encodeEntities: "utf8", emptyAttrs: true });
 }

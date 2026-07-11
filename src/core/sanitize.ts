@@ -1,17 +1,28 @@
 /**
- * A tiny, dependency-free HTML sanitiser.
+ * A tiny, DOM-free HTML sanitiser.
  *
  * We only ever render Markdown that WE parsed (via `marked`) or HTML pasted
  * into the editor, so the threat surface is small — but "small" is not "none".
  * This strips scripts, event handlers, and `javascript:` URLs, and allow-lists
- * the tag/attribute set the editor understands. It runs anywhere a DOM is
- * available (browsers + jsdom/happy-dom in tests).
+ * the tag/attribute set the editor understands.
+ *
+ * Isomorphic by construction: the HTML is tokenised with `htmlparser2` and
+ * re-serialised with `dom-serializer` (both pure-JS, no DOM), so it produces
+ * identical output in the browser, in jsdom tests, AND in bare Node / edge /
+ * Next.js server components — exactly the SSR runtimes `<Markdown>`/`toHTML`
+ * invite. The serializer is configured (`encodeEntities: "utf8"`,
+ * `emptyAttrs: true`) to match the browser's HTML-fragment serialisation
+ * byte-for-byte for the tag/attribute set we emit.
  *
  * Plugins may WIDEN the allow-list additively (extra tags/attributes for their
  * parsed HTML to survive) via `SanitizeOptions` — but the denial floor is not
  * negotiable: scripts, iframes, event handlers, and script-scheme URLs are
  * always stripped regardless of what an extension asks for.
  */
+
+import { parseDocument } from "htmlparser2";
+import render from "dom-serializer";
+import { isTag, isText, type ChildNode, type Element } from "domhandler";
 
 export interface SanitizeOptions {
   /** Extra allowed tags (lowercase). */
@@ -85,63 +96,83 @@ function resolvePolicy(options?: SanitizeOptions): ResolvedPolicy {
   return { tags, attrs };
 }
 
-function cleanElement(el: Element, policy: ResolvedPolicy): void {
-  const tag = el.tagName.toLowerCase();
+/**
+ * Clean one element node in place and return the nodes that should replace it
+ * in the output:
+ *   • denied tag        → `[]`               (dropped outright, children too)
+ *   • unknown tag       → its cleaned children (unwrapped, wrapper dropped)
+ *   • non-checkbox input→ `[]`               (only task-list checkboxes survive)
+ *   • allowed tag       → `[el]`             (attributes filtered, links hardened)
+ */
+function cleanElement(el: Element, policy: ResolvedPolicy): ChildNode[] {
+  const tag = el.name.toLowerCase();
+
+  // Denied tags never survive — their whole subtree goes with them.
+  if (DENIED_TAGS.has(tag)) return [];
 
   if (!policy.tags.has(tag)) {
-    // Unwrap unknown elements: keep their children, drop the wrapper.
-    const parent = el.parentNode;
-    if (parent) {
-      while (el.firstChild) parent.insertBefore(el.firstChild, el);
-      parent.removeChild(el);
-    }
-    return;
+    // Unwrap unknown elements: keep their (cleaned) children, drop the wrapper.
+    return cleanNodes(el.children, policy);
   }
 
   // Only checkbox inputs survive (task lists); everything else is removed.
-  if (tag === "input" && el.getAttribute("type") !== "checkbox") {
-    el.remove();
-    return;
-  }
+  if (tag === "input" && el.attribs.type !== "checkbox") return [];
 
   const allowedForTag = policy.attrs[tag];
-  for (const attr of Array.from(el.attributes)) {
-    const name = attr.name.toLowerCase();
+  for (const name of Object.keys(el.attribs)) {
+    // Attribute names are already lowercased by the HTML parser.
     const isAllowed =
       GLOBAL_ATTRS.has(name) || (allowedForTag && allowedForTag.has(name));
     if (name.startsWith("on") || !isAllowed) {
-      el.removeAttribute(attr.name);
+      delete el.attribs[name];
       continue;
     }
-    if (URL_ATTRS.has(name) && !safeUrl(attr.value)) {
-      el.removeAttribute(attr.name);
+    if (URL_ATTRS.has(name) && !safeUrl(el.attribs[name])) {
+      delete el.attribs[name];
     }
   }
 
-  // Harden external links.
-  if (tag === "a" && el.getAttribute("target") === "_blank") {
-    el.setAttribute("rel", "noopener noreferrer");
+  // Harden external links (rel keeps its original slot when it already exists,
+  // else lands last — matching the browser's attribute serialisation order).
+  if (tag === "a" && el.attribs.target === "_blank") {
+    el.attribs.rel = "noopener noreferrer";
   }
+
+  el.children = cleanNodes(el.children, policy);
+  return [el];
 }
 
 /**
- * Sanitise an HTML string. Returns cleaned HTML. Safe to call in Node test
- * environments (jsdom) and in browsers.
+ * Clean a list of sibling nodes, splicing in the results of each.
+ *
+ * ONLY elements and TEXT survive. Comment / directive (`<!doctype>`, `<!-->`) /
+ * CDATA / processing-instruction nodes are DROPPED outright (mirroring
+ * DOMPurify). This is not cosmetic: htmlparser2 does not honour the HTML5 `--!>`
+ * "abrupt closing" comment terminator, so a payload like
+ * `<!--a--!><img src=x onerror=alert(1)>` is swallowed as ONE comment node and,
+ * if re-emitted verbatim, a browser re-parsing our output (via
+ * dangerouslySetInnerHTML) closes the comment at `--!>` and materialises a live
+ * `<img onerror>`. Refusing to re-serialise ANY comment node closes that mXSS
+ * seam completely.
+ */
+function cleanNodes(nodes: ChildNode[], policy: ResolvedPolicy): ChildNode[] {
+  const out: ChildNode[] = [];
+  for (const node of nodes) {
+    if (isTag(node)) out.push(...cleanElement(node, policy));
+    else if (isText(node)) out.push(node); // text survives; comments/CDATA/directives dropped
+  }
+  return out;
+}
+
+/**
+ * Sanitise an HTML string. Returns cleaned HTML. Runs anywhere — browsers,
+ * jsdom/happy-dom tests, and bare Node (no DOM required).
  */
 export function sanitizeHtml(html: string, options?: SanitizeOptions): string {
   const policy = resolvePolicy(options);
-  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-  const root = doc.body.firstElementChild as HTMLElement | null;
-  if (!root) return "";
-
-  // Remove dangerous elements outright before unwrapping unknowns.
-  root.querySelectorAll(Array.from(DENIED_TAGS).join(",")).forEach((n) => n.remove());
-
-  // Depth-first walk; snapshot the node list because we mutate the tree.
-  const all = Array.from(root.querySelectorAll("*"));
-  for (const el of all) {
-    // Element may have been detached by a previous unwrap; skip if so.
-    if (el.isConnected) cleanElement(el, policy);
-  }
-  return root.innerHTML;
+  // Parse WITHOUT a wrapper element — `parseDocument` handles a fragment
+  // natively, and a stray `</div>` in the input can't break out of anything.
+  const doc = parseDocument(html ?? "", { decodeEntities: true });
+  const cleaned = cleanNodes(doc.children as ChildNode[], policy);
+  return render(cleaned, { encodeEntities: "utf8", emptyAttrs: true });
 }

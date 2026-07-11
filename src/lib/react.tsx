@@ -10,11 +10,12 @@
  * React is a peer dependency; the core entry never imports it.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 import { EdodoWrite } from "../core/editor.js";
-import type { EditorOptions, SelectionInfo } from "../core/types.js";
+import type { EditorOptions, EdodoPlugin, SelectionInfo } from "../core/types.js";
 import { parseMarkdown } from "../core/parse.js";
+import { createRenderCodec } from "./index.js";
 
 export interface EdodoWriteEditorProps
   extends Omit<EditorOptions, "value" | "onChange" | "className"> {
@@ -85,13 +86,25 @@ export function EdodoWriteEditor({
 
 export interface MarkdownProps {
   value?: string;
+  /** Plugin set to render with. When given, routes through the plugin-aware
+   *  render codec (mentions/emoji/callouts/math render as their HTML) instead
+   *  of the bare GFM parser — the same codec an editor built with these plugins
+   *  uses, so read-only render matches the editor byte-for-byte. */
+  plugins?: EdodoPlugin[];
   className?: string;
   style?: CSSProperties;
 }
 
 /** Read-only Markdown renderer sharing the editor's stylesheet. */
-export function Markdown({ value = "", className, style }: MarkdownProps) {
-  const html = parseMarkdown(value);
+export function Markdown({ value = "", plugins, className, style }: MarkdownProps) {
+  // Build the plugin-aware codec once per plugin set. Rendering is
+  // deterministic (no random ids), so the SSR string and the client render
+  // agree and `dangerouslySetInnerHTML` hydrates without a warning.
+  const codec = useMemo(
+    () => (plugins && plugins.length ? createRenderCodec(plugins) : null),
+    [plugins],
+  );
+  const html = codec ? codec.render(value) : parseMarkdown(value);
   return (
     <div className={className ? `ew ${className}` : "ew"} style={style}>
       <div className="ew-content ew-content--readonly" dangerouslySetInnerHTML={{ __html: html }} />

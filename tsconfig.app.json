@@ -22,6 +22,9 @@
       "edodo-write/react": ["src/lib/react.tsx"],
       "edodo-write/plugins": ["src/plugins/index.ts"],
       "edodo-write/testing": ["src/lib/testing.ts"],
+      "edodo-write/parse": ["src/lib/parse-api.ts"],
+      "edodo-write/email": ["src/lib/email.ts"],
+      "edodo-write/ingest": ["src/lib/ingest.ts"],
       "edodo-write/styles.css": ["src/styles.css"]
     }
   },
