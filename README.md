@@ -172,6 +172,15 @@ npm run test:e2e  # Playwright (real-browser behaviour)
 
 Live site: **https://vivmagarwal.github.io/edodo-write/**
 
+## For LLMs and AI agents
+
+The complete documentation ships as one deterministic, build-generated file —
+[`llms-full.txt`](https://vivmagarwal.github.io/edodo-write/llms-full.txt)
+(index: [`llms.txt`](https://vivmagarwal.github.io/edodo-write/llms.txt)).
+It is regenerated from `docs/*.md` on every build; a guide missing from it
+fails the build, so it can never drift from the docs. Point your agent at it
+for full context on embedding, the plugin API, and the Markdown dialect.
+
 ## License
 
 MIT © vivmagarwal

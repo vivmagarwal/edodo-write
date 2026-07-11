@@ -1,6 +1,6 @@
 {
   "name": "edodo-write",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "type": "module",
   "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
   "license": "MIT",

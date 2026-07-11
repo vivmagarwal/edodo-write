@@ -7,7 +7,7 @@
  * with the docs. Deterministic: fixed order, no timestamps.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,7 +15,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const SITE = pkg.homepage.replace(/\/$/, "");
 
-// [file, title] — same order as the docs site nav.
+// [file, title] — same order as the docs site nav. GUARDED below: every
+// file in docs/ must appear here and every entry must exist — a new guide
+// that isn't listed (or a typo'd entry) fails the build instead of silently
+// dropping out of the LLM corpus. Docs are the source of truth, mechanically.
 const DOCS = [
   ["GETTING_STARTED.md", "Getting started"],
   ["ARCHITECTURE.md", "Architecture"],
@@ -42,13 +45,23 @@ L.push("");
 L.push("---");
 L.push("");
 
-for (const [file, title] of DOCS) {
-  let body;
-  try {
-    body = readFileSync(join(root, "docs", file), "utf8").trim();
-  } catch {
-    continue;
+// ── Drift guard ──────────────────────────────────────────────────────────
+const onDisk = readdirSync(join(root, "docs")).filter((f) => f.endsWith(".md")).sort();
+const listed = DOCS.map(([f]) => f).sort();
+const missingFromList = onDisk.filter((f) => !listed.includes(f));
+const missingOnDisk = listed.filter((f) => !onDisk.includes(f));
+if (missingFromList.length || missingOnDisk.length) {
+  if (missingFromList.length) {
+    console.error(`✗ docs not listed in gen-llms-txt.mjs (add them so LLMs see them): ${missingFromList.join(", ")}`);
   }
+  if (missingOnDisk.length) {
+    console.error(`✗ listed docs missing on disk: ${missingOnDisk.join(", ")}`);
+  }
+  process.exit(1);
+}
+
+for (const [file, title] of DOCS) {
+  const body = readFileSync(join(root, "docs", file), "utf8").trim();
   L.push(`# ${title}`);
   L.push("");
   L.push(body);
@@ -60,15 +73,23 @@ for (const [file, title] of DOCS) {
 const full = L.join("\n");
 writeFileSync(join(root, "public", "llms-full.txt"), full);
 
-// A short pointer file (llms.txt convention).
+// The index file (llms.txt convention: H1, blockquote summary, link list).
+const repoUrl = pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
 const short = [
   `# edodo-write`,
   "",
   `> ${pkg.description}`,
   "",
-  `Full documentation for LLMs: ${SITE}/llms-full.txt`,
-  `npm: https://www.npmjs.com/package/${pkg.name}`,
-  `Repo: ${pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}`,
+  "## Docs",
+  "",
+  `- [Complete documentation in one file](${SITE}/llms-full.txt): every guide below, concatenated — fetch this for full context`,
+  ...DOCS.map(([file, title]) => `- [${title}](${repoUrl}/blob/master/docs/${file})`),
+  "",
+  "## Package",
+  "",
+  `- [npm](https://www.npmjs.com/package/${pkg.name}): \`npm i ${pkg.name}\``,
+  `- [Source repo](${repoUrl})`,
+  `- [Live playground](${SITE}/)`,
   "",
 ].join("\n");
 writeFileSync(join(root, "public", "llms.txt"), short);

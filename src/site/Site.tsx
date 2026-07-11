@@ -120,6 +120,8 @@ export function Site() {
         <span>MIT</span>
         <span>·</span>
         <a href="https://vivmagarwal.github.io/edodo-write/" target="_blank" rel="noreferrer">docs & demo</a>
+        <span>·</span>
+        <a href="llms-full.txt" target="_blank" rel="noreferrer" title="Complete docs in one file, for LLMs">llms.txt</a>
       </footer>
     </div>
   );
