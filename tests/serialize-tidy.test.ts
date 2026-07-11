@@ -56,3 +56,14 @@ describe("serializer instancing", () => {
     expect(tidyMarkdown("```\na b\n```")).toBe("```\na b\n```");
   });
 });
+
+describe("trailing <br> artifacts", () => {
+  it("a caret-anchor br at the end of a block serializes to nothing", () => {
+    expect(htmlToMarkdown("<p>outside<br></p>")).toBe("outside");
+    expect(htmlToMarkdown("<h2>title<br></h2>")).toBe("## title");
+  });
+
+  it("a REAL soft break (content follows) still serializes as a hard break", () => {
+    expect(htmlToMarkdown("<p>one<br>two</p>")).toBe("one\\\ntwo");
+  });
+});

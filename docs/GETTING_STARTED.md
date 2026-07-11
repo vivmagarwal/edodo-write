@@ -101,6 +101,44 @@ assert.equal(editor.exec("taskList"), false);
 editor.destroy();
 ```
 
+## Static HTML / CDN (no build step)
+
+Two supported routes for plain HTML pages:
+
+**Self-contained bundle** (no import map, no third-party rewriting — one
+stylesheet, one module; ~52 KB gzipped with all first-party plugins):
+
+```html
+<link rel="stylesheet" href="https://unpkg.com/edodo-write/dist-lib/edodo-write.css">
+<div id="app"></div>
+<script type="module">
+  import { EdodoWrite, highlight, callout, tags, embeds } from
+    "https://unpkg.com/edodo-write/dist-lib/standalone.js";
+  const editor = new EdodoWrite(document.getElementById("app"), {
+    value: "# Hello from a static page",
+    plugins: [highlight(), callout(), embeds()],
+    onChange: (md) => console.log(md),
+  });
+</script>
+```
+
+Also on jsDelivr: `https://cdn.jsdelivr.net/npm/edodo-write/dist-lib/standalone.js`.
+Bundlers get the same entry as `import … from "edodo-write/standalone"`.
+
+**esm.sh** (resolves the regular entries and their dependencies on the fly —
+including the optional `katex`/`edododraw` engines for math and diagrams):
+
+```html
+<script type="module">
+  import { EdodoWrite } from "https://esm.sh/edodo-write";
+  import { math, edodoDraw } from "https://esm.sh/edodo-write/plugins";
+</script>
+```
+
+In the standalone bundle the optional engines stay external by design:
+`math()` falls back to plain TeX and `edodoDraw()` shows a readable error
+unless `katex`/`edododraw` are reachable (add an import map, or use esm.sh).
+
 ## What you get out of the box
 
 - **Type-to-format** — `# ` … `###### `, `- `, `1. `, `[ ] `, `> `, `` ``` ``,

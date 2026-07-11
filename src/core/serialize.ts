@@ -62,6 +62,24 @@ export function createTurndownService(extensions: SerializerExtension[] = []): T
   // turndown already unwraps unknown inline tags, this just makes it explicit.
   td.keep(["mark"]);
 
+  // A <br> that nothing follows (the empty-block caret anchor, or a
+  // Shift+Enter with no continuation typed yet) is a hard break with no
+  // second line — meaningless in Markdown and rendered as a dangling "\".
+  // Serialize trailing breaks to nothing.
+  td.addRule("dropTrailingBreaks", {
+    filter: (node) => {
+      if (node.nodeName !== "BR") return false;
+      const parent = node.parentNode;
+      if (!parent || !/^(P|H[1-6]|LI|BLOCKQUOTE)$/.test(parent.nodeName)) return false;
+      for (let sib = node.nextSibling; sib; sib = sib.nextSibling) {
+        if (sib.nodeType === 1) return false;
+        if (sib.nodeType === 3 && (sib as Text).data.split("​").join("").trim() !== "") return false;
+      }
+      return true;
+    },
+    replacement: () => "",
+  });
+
   // <br> inside a table cell: a backslash hard break would rupture the row.
   // A lone <br> is just the cell's caret anchor (serialize to nothing);
   // a genuine line break becomes literal <br> — the GFM idiom for multi-line

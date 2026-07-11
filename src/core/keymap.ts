@@ -141,7 +141,7 @@ function handleEnter(root: HTMLElement): boolean {
 }
 
 /** Split a block at the caret. The new (after) block is a paragraph for
- *  headings, otherwise the same tag. */
+ *  headings and blockquotes, otherwise the same tag. */
 function splitBlock(block: HTMLElement): void {
   const range = getRange();
   if (!range) return;
@@ -153,12 +153,38 @@ function splitBlock(block: HTMLElement): void {
   // Enter leaves a heading OR a blockquote for a normal paragraph (Notion-like);
   // Shift+Enter adds a soft line break to continue within the block.
   const afterTag = /^(H[1-6]|BLOCKQUOTE)$/.test(block.tagName) ? "p" : block.tagName.toLowerCase();
-  const newBlock = document.createElement(afterTag);
-  newBlock.appendChild(frag);
-  ensureNotEmpty(newBlock);
+
+  // A blockquote's children are BLOCK-LEVEL <p>s (that's how Markdown parses
+  // `> quote`), so the extracted tail can itself contain block elements.
+  // Wrapping those in one new <p> would nest paragraphs — corrupt DOM the
+  // serializer happens to survive but the caret does not. Emit one sibling
+  // block per extracted block child, keeping loose inline runs together.
+  const pieces: HTMLElement[] = [];
+  let current: HTMLElement | null = null;
+  for (const child of Array.from(frag.childNodes)) {
+    if (child.nodeType === 1 && /^(P|H[1-6]|BLOCKQUOTE)$/.test((child as HTMLElement).tagName)) {
+      const p = document.createElement("p");
+      while (child.firstChild) p.appendChild(child.firstChild);
+      pieces.push(p);
+      current = null;
+    } else {
+      if (!current) {
+        current = document.createElement(afterTag);
+        pieces.push(current);
+      }
+      current.appendChild(child);
+    }
+  }
+  if (pieces.length === 0) pieces.push(document.createElement(afterTag));
+
+  pieces.forEach((p) => ensureNotEmpty(p));
   ensureNotEmpty(block);
-  block.after(newBlock);
-  placeCaretAtStart(newBlock);
+  let ref: HTMLElement = block;
+  for (const piece of pieces) {
+    ref.after(piece);
+    ref = piece;
+  }
+  placeCaretAtStart(pieces[0]);
 }
 
 function splitListItem(li: HTMLElement): void {

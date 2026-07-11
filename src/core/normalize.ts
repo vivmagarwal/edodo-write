@@ -163,6 +163,21 @@ export function normalizeDocument(root: HTMLElement): boolean {
     child = next;
   }
 
+  // 2b. Nested paragraph-like blocks (a <p> inside a <p> — the residue of a
+  //     container split gone wrong or a native edit) — unwrap in place.
+  //     Blockquotes and list items legitimately contain <p> children; only
+  //     paragraph/heading PARENTS are illegal.
+  root.querySelectorAll(
+    "p p, p h1, p h2, p h3, p h4, p h5, p h6, " +
+    "h1 p, h2 p, h3 p, h4 p, h5 p, h6 p",
+  ).forEach((el) => {
+    if (isPluginIsland(el, root)) return;
+    const parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+  });
+
   // 3. Structural repairs, block by block.
   for (const el of Array.from(root.children) as HTMLElement[]) {
     switch (el.tagName) {
@@ -188,6 +203,13 @@ export function normalizeDocument(root: HTMLElement): boolean {
       }
       case "HR":
         break;
+      case "BLOCKQUOTE": {
+        // A quote's <p> children need their own caret anchors — the parent
+        // check sees "has element children" and would skip them.
+        el.querySelectorAll(":scope > p").forEach((p) => ensureCaretAnchor(p as HTMLElement));
+        ensureCaretAnchor(el);
+        break;
+      }
       case "TABLE": {
         // Every cell needs a placeable caret (typing into an empty cell).
         el.querySelectorAll("td, th").forEach((cell) => {

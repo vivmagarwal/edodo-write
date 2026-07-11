@@ -143,3 +143,25 @@ describe("plugin islands are off-limits to the normalizer", () => {
     expect(r.querySelector("figure div")!.getAttribute("style")).toContain("padding"); // island kept
   });
 });
+
+describe("nested paragraph repair", () => {
+  it("unwraps a <p> inside a <p> (container-split residue)", () => {
+    const r = root("<p>outer <p>inner</p></p>");
+    normalizeDocument(r);
+    expect(r.querySelector("p p")).toBeNull();
+    expect(r.textContent).toContain("inner");
+  });
+
+  it("leaves legitimate blockquote <p> children alone and anchors empty ones", () => {
+    const r = root("<blockquote><p>kept</p><p></p></blockquote>");
+    normalizeDocument(r);
+    expect(r.querySelectorAll("blockquote > p").length).toBe(2);
+    expect(r.querySelectorAll("blockquote > p")[1].firstChild).not.toBeNull(); // anchored
+  });
+
+  it("does not unwrap paragraphs inside plugin islands", () => {
+    const r = root('<figure data-widget="embed" data-source="u"><div><p>card body</p></div></figure>');
+    normalizeDocument(r);
+    expect(r.querySelector("figure p")).not.toBeNull();
+  });
+});

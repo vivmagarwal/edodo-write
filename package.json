@@ -1,6 +1,6 @@
 {
   "name": "edodo-write",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "type": "module",
   "description": "A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.",
   "license": "MIT",
@@ -45,6 +45,10 @@
       "types": "./dist-lib/lib/testing.d.ts",
       "import": "./dist-lib/testing.js"
     },
+    "./standalone": {
+      "types": "./dist-lib/lib/standalone.d.ts",
+      "import": "./dist-lib/standalone.js"
+    },
     "./styles.css": "./dist-lib/edodo-write.css",
     "./package.json": "./package.json"
   },
@@ -65,13 +69,14 @@
     "build": "tsc -b && vite build",
     "build:lib": "vite build --config vite.lib.config.ts",
     "build:types": "tsc -p tsconfig.lib.json",
-    "build:pkg": "npm run build:lib && npm run build:types && node scripts/gen-llms-txt.mjs --pkg",
+    "build:pkg": "npm run build:lib && npm run build:standalone && npm run build:types && node scripts/gen-llms-txt.mjs --pkg",
     "preview": "vite preview --port 4183 --strictPort",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run typecheck && npx vitest run && npm run build:pkg",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:standalone": "vite build --config vite.standalone.config.ts"
   },
   "dependencies": {
     "@joplin/turndown-plugin-gfm": "^1.0.61",

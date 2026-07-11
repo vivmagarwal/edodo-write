@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>edodo-write standalone (CDN-style) fixture</title>
+    <!-- Exactly what a static page does: one stylesheet, one module import. -->
+    <link rel="stylesheet" href="/dist-lib/edodo-write.css" />
+    <style> body { margin: 2rem; } #app { max-width: 46rem; margin: 0 auto; } </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { EdodoWrite, highlight, callout, tags, embeds } from "/dist-lib/standalone.js";
+      window.editor = new EdodoWrite(document.getElementById("app"), {
+        value: new URLSearchParams(location.search).get("value") ?? "",
+        autofocus: true,
+        plugins: [
+          highlight(),
+          callout(),
+          tags({ source: (q) => [{ label: "static", href: "https://example.com/t/static" }]
+            .filter((t) => t.label.startsWith(q)) }),
+          embeds(),
+        ],
+      });
+      window.EdodoWrite = EdodoWrite;
+    </script>
+  </body>
+</html>

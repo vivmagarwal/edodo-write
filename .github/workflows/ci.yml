@@ -26,6 +26,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx vitest run
+      # Build the package artifacts on the clean checkout: validates the
+      # declaration emit AND provides dist-lib/standalone.js for the CDN spec.
+      - run: npm run build:pkg
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
       - name: Upload Playwright traces on failure

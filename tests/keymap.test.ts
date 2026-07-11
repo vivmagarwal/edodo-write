@@ -388,3 +388,36 @@ describe("modifier keys handled by the engine", () => {
     expect(ed.getMarkdown()).toBe("b");
   });
 });
+
+describe("Enter inside blockquotes (block-level <p> children)", () => {
+  it("at the end of a quote exits to a clean sibling paragraph — never nested", () => {
+    const ed = mount("> wise words");
+    caretAtEnd(ed.content.querySelector("blockquote p") ?? ed.content.querySelector("blockquote")!);
+    expect(press(ed, "Enter")).toBe(true);
+
+    expect(ed.content.querySelector("p p")).toBeNull(); // the nesting bug
+    const after = ed.content.querySelector("blockquote")!.nextElementSibling!;
+    expect(after.tagName).toBe("P");
+    const sel = getSelection()!;
+    expect(after.contains(sel.anchorNode) || sel.anchorNode === after).toBe(true);
+    // typing lands OUTSIDE the quote
+    sel.getRangeAt(0).insertNode(document.createTextNode("outside"));
+    expect(ed.getMarkdown()).toBe("> wise words\n\noutside");
+    ed.destroy();
+  });
+
+  it("mid-quote moves the tail out as a paragraph", () => {
+    const ed = mount("> HeadTail");
+    const textNode = ed.content.querySelector("blockquote p")!.firstChild as Text;
+    const sel = getSelection()!;
+    const r = document.createRange();
+    r.setStart(textNode, 4); // between "Head" and "Tail"
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    expect(press(ed, "Enter")).toBe(true);
+    expect(ed.content.querySelector("p p")).toBeNull();
+    expect(ed.getMarkdown()).toBe("> Head\n\nTail");
+    ed.destroy();
+  });
+});
