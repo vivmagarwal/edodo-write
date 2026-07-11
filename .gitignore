@@ -19,5 +19,6 @@ public/llms-full.txt
 test-results/
 playwright-report/
 tests/.docs-tmp/
+internal/
 /llms-full.txt
 /llms.txt

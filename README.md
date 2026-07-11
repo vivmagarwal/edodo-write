@@ -168,7 +168,6 @@ npm run test:e2e  # Playwright (real-browser behaviour)
 - **[Plugin guide](docs/PLUGIN_GUIDE.md)** — write a plugin
 - **[Architecture](docs/ARCHITECTURE.md)** — how the round-trip works
 - **[Development guide](docs/DEVELOPMENT.md)** — contributing
-- **[Notion UX study](docs/NOTION_UX_STUDY.md)** — the behavioural spec
 
 Live site: **https://vivmagarwal.github.io/edodo-write/**
 

@@ -288,8 +288,7 @@ The full invariants catalog (with the bugs each rule prevents) is in
   inside code fences).
 - **One `contentEditable`, Markdown state** (the Medium model) rather than
   Notion's per-block editors over a JSON block tree — simpler and
-  Markdown-native, at the cost of doing block splits/merges ourselves. See
-  [NOTION_UX_STUDY.md](NOTION_UX_STUDY.md).
+  Markdown-native, at the cost of doing block splits/merges ourselves.
 
 ## Build
 

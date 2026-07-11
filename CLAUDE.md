@@ -59,8 +59,10 @@ a first-class plugin system. Built ground-up over native `contentEditable`;
 - **New here? Read `docs/DEVELOPMENT.md` first** (layout, dev loop, the
   contentEditable rules, testing, release). Architecture + module table:
   `docs/ARCHITECTURE.md`. Plugin authoring: `docs/PLUGIN_GUIDE.md`.
-  Behavioural spec vs Notion: `docs/NOTION_UX_STUDY.md`. Public API:
-  `docs/INTEGRATION_GUIDE.md`. What you can type: `docs/MARKDOWN_AND_SHORTCUTS.md`.
+  Behavioural spec vs Notion: `internal/NOTION_UX_STUDY.md` (internal,
+  untracked — absent on fresh clones; holds settled UX policy decisions).
+  Public API: `docs/INTEGRATION_GUIDE.md`. What you can type:
+  `docs/MARKDOWN_AND_SHORTCUTS.md`.
 - Orchestrator + undo history + plugin wiring: `src/core/editor.ts`. Public
   types incl. the whole plugin surface: `src/core/types.ts`. Plugin resolution:
   `src/core/plugin.ts`. Built-ins as a plugin: `src/core/preset.ts`. Transforms:

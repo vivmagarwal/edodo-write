@@ -95,13 +95,22 @@ interface DocBlock {
 }
 
 /** The documents whose examples are executable. Discovered at runtime so a
- *  newly added docs/*.md is covered without touching this file. */
+ *  newly added docs/*.md is covered without touching this file. internal/
+ *  holds untracked local-only notes (absent on CI and fresh clones); their
+ *  examples still execute here so they can't rot in the clones that have
+ *  them. */
 function docFiles(): string[] {
-  const docs = readdirSync(join(ROOT, "docs"))
-    .filter((f) => f.endsWith(".md"))
-    .sort()
-    .map((f) => join(ROOT, "docs", f));
-  return [join(ROOT, "README.md"), ...docs];
+  const fromDir = (dir: string) => {
+    try {
+      return readdirSync(join(ROOT, dir))
+        .filter((f) => f.endsWith(".md"))
+        .sort()
+        .map((f) => join(ROOT, dir, f));
+    } catch {
+      return []; // directory absent (internal/ on CI)
+    }
+  };
+  return [join(ROOT, "README.md"), ...fromDir("docs"), ...fromDir("internal")];
 }
 
 /** Extract fenced code blocks. A fence opens with ``` at column 0 followed by
