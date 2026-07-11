@@ -106,3 +106,40 @@ describe("isEffectivelyEmpty", () => {
     expect(isEffectivelyEmpty(root("<hr>"))).toBe(false);
   });
 });
+
+describe("plugin islands are off-limits to the normalizer", () => {
+  it("inline styles inside widget figures survive (engine render output)", () => {
+    const r = root(
+      '<figure data-widget="diagram" data-source="x" contenteditable="false">' +
+      '<div class="ew-widget__surface" style="position: relative; overflow: hidden;">' +
+      '<svg style="position: absolute; width: 100%; height: 100%"><rect width="100%"></rect></svg>' +
+      "</div></figure><p>prose</p>",
+    );
+    normalizeDocument(r);
+    expect(r.querySelector(".ew-widget__surface")!.getAttribute("style")).toContain("relative");
+    expect(r.querySelector("svg")!.getAttribute("style")).toContain("100%");
+  });
+
+  it("KaTeX-style spans inside data-math chips survive (no unwrap, no strip)", () => {
+    const r = root(
+      '<p>before <span class="ew-math" data-math="x^2" contenteditable="false">' +
+      '<span class="katex" style="margin-right: 0.05em"><span style="top: -3em">x</span></span>' +
+      "</span> after</p>",
+    );
+    normalizeDocument(r);
+    const chip = r.querySelector("[data-math]")!;
+    expect(chip.querySelectorAll("span[style]").length).toBe(2);
+  });
+
+  it("prose styling artifacts are STILL scrubbed outside islands", () => {
+    const r = root(
+      '<h1>Head<span style="font-size: 1rem">&nbsp;tail</span></h1>' +
+      '<p style="color:red">x</p>' +
+      '<figure data-widget="embed" data-source="u"><div style="padding: 4px">card</div></figure>',
+    );
+    normalizeDocument(r);
+    expect(r.querySelector("h1 span")).toBeNull();          // prose span unwrapped
+    expect(r.querySelector("p")!.hasAttribute("style")).toBe(false); // prose style stripped
+    expect(r.querySelector("figure div")!.getAttribute("style")).toContain("padding"); // island kept
+  });
+});

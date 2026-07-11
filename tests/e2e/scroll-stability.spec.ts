@@ -95,3 +95,53 @@ test("a diagram re-renders to fit when its container resizes", async ({ page }) 
   await expect.poll(stamp, { timeout: 4000 }).not.toBe(first); // re-rendered
   expect(await markdown(page)).toBe("```fake\nhello\n```"); // contract untouched
 });
+
+test.describe("renders survive edits (the normalizer must not touch plugin islands)", () => {
+  test("an edodo-draw diagram keeps its render through table edits nearby", async ({ page }) => {
+    const value = "```edd\nscene { a[One] --> b[Two] }\n```\n\n| a | b |\n| --- | --- |\n| 1 | 2 |";
+    await page.goto(`/e2e.html?plugins=edododraw&value=${encodeURIComponent(value)}`);
+    const svg = page.locator('figure[data-widget="diagram"] svg');
+    await svg.waitFor({ timeout: 10000 });
+
+    const fit = () => page.evaluate(() => {
+      const surface = document.querySelector('figure[data-widget="diagram"] .ew-widget__surface')!;
+      const s = surface.querySelector("svg")!;
+      const sr = s.getBoundingClientRect();
+      const cr = surface.getBoundingClientRect();
+      return {
+        styled: (s.getAttribute("style") ?? "").includes("100%"),
+        fills: Math.abs(sr.width - cr.width) < 4 && Math.abs(sr.height - cr.height) < 4,
+      };
+    });
+    expect(await fit()).toEqual({ styled: true, fills: true });
+
+    // THE trigger from the field report: an EDIT (a table menu op counts, so
+    // does typing) runs the normalizer over the whole document.
+    await page.locator(".ew-content th").first().hover();
+    await page.locator(".ew-th-col").click();
+    await page.locator(".ew-menu__item", { hasText: "Insert right" }).click();
+    await page.keyboard.type("edited");
+    await page.waitForTimeout(300); // debounced change + normalize passes
+
+    expect(await fit()).toEqual({ styled: true, fills: true }); // render intact
+    expect(await page.evaluate(() => window.editor.getMarkdown())).toContain("```edd");
+  });
+
+  test("KaTeX math keeps its styled spans through edits", async ({ page }) => {
+    const value = "$$\nx = \\frac{a}{b}\n$$\n\ntype here";
+    await page.goto(`/e2e.html?plugins=math&value=${encodeURIComponent(value)}`);
+    const katex = page.locator('figure[data-widget="math"] .katex');
+    await katex.waitFor({ timeout: 10000 });
+    const styledSpans = () =>
+      page.evaluate(() => document.querySelectorAll('figure[data-widget="math"] span[style]').length);
+    const before = await styledSpans();
+    expect(before).toBeGreaterThan(0);
+
+    await page.locator(".ew-content p").last().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" and more");
+    await page.waitForTimeout(300);
+
+    expect(await styledSpans()).toBe(before); // KaTeX structure untouched
+  });
+});

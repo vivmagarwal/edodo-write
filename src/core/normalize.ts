@@ -43,6 +43,27 @@ export function visibleText(el: Node): string {
   return (el.textContent ?? "").split(ZWSP).join("");
 }
 
+/**
+ * Is this element inside (or itself) a plugin-owned island whose interior the
+ * normalizer must never touch? Widget figures, inline data-math chips, and
+ * any non-editable subtree qualify — their inline styles are render output,
+ * not contentEditable damage.
+ */
+function isPluginIsland(el: Element, root: HTMLElement): boolean {
+  let node: Element | null = el;
+  while (node && node !== root) {
+    if (
+      node.hasAttribute("data-widget") ||
+      node.hasAttribute("data-math") ||
+      node.getAttribute("contenteditable") === "false"
+    ) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
 /** Does this block hold anything worth keeping? */
 function blockHasContent(el: HTMLElement): boolean {
   if (visibleText(el).trim() !== "") return true;
@@ -78,13 +99,23 @@ export function normalizeDocument(root: HTMLElement): boolean {
   // 2. Styling artifacts from native cross-block merges. Only styled spans and
   //    font tags — plain spans may carry classes a plugin's markdown gives
   //    meaning to, and the serializer ignores them anyway.
+  //    CRITICAL EXCLUSION: plugin-owned islands (widget figures, math chips,
+  //    any contenteditable=false subtree) render with inline styles on
+  //    purpose — an engine's SVG sizing, KaTeX's spacing spans. Stripping
+  //    inside them destroys the render while the Markdown stays fine (the
+  //    "diagram breaks after any edit" bug). The normalizer repairs PROSE;
+  //    islands belong to their plugins.
   root.querySelectorAll("span[style], font").forEach((el) => {
+    if (isPluginIsland(el, root)) return;
     const parent = el.parentNode;
     if (!parent) return;
     while (el.firstChild) parent.insertBefore(el.firstChild, el);
     parent.removeChild(el);
   });
-  root.querySelectorAll("[style]").forEach((el) => el.removeAttribute("style"));
+  root.querySelectorAll("[style]").forEach((el) => {
+    if (isPluginIsland(el, root)) return;
+    el.removeAttribute("style");
+  });
 
   // 1. Root children must be blocks. Wrap runs of inline/text nodes into <p>.
   //    Whitespace-only text nodes between blocks (marked emits "\n" separators)
