@@ -19,15 +19,45 @@
  * "Create #query".
  */
 
+import type { MarkedExtension } from "marked";
+import type TurndownService from "turndown";
 import { scrollRowIntoList } from "../core/ui.js";
 import { definePlugin, type EdodoPlugin, type EditorContext } from "../lib/index.js";
+import type { MarkdownExtensionSpec } from "../core/types.js";
+import { escapeAttr } from "./widget.js";
 
 export interface TagItem {
   label: string;
   href?: string;
   hint?: string;
   id?: string;
+  /** Frozen display name for the custom-token (mention) seam. */
+  display?: string;
+  /** Optional metadata a host may attach for its own suggestion rows. */
+  subtitle?: string;
+  avatar?: string;
+  color?: string;
 }
+
+/**
+ * The item shape the custom-token (mention) seam works with — id + a frozen
+ * display name. This is what `parse.toItem` produces and what `serialize` /
+ * `render` receive (RFC §5.3).
+ */
+export interface TagTokenItem {
+  id: string;
+  display: string;
+  subtitle?: string;
+  avatar?: string;
+  color?: string;
+}
+
+/**
+ * Relabel a stored mention at render time WITHOUT touching the stored token —
+ * e.g. a deleted account shows "Deleted user" while the markdown still carries
+ * the original frozen display. Return `null` to keep the frozen display.
+ */
+export type ResolveMention = (id: string, fallbackDisplay: string) => { display: string } | null;
 
 export interface TagsOptions {
   /** Trigger character. Default: "#". */
@@ -43,6 +73,29 @@ export interface TagsOptions {
    * name to run several together (e.g. "#" tags plus "@" mentions).
    */
   name?: string;
+
+  // ── Custom-token (mention) seam (RFC §5) ───────────────────────────────────
+  // Supply BOTH `serialize` and `parse` to store a CUSTOM token (e.g. EDodo's
+  // `@[Display](id)`) instead of a plain GFM link. When present the plugin
+  // registers the paired marked tokenizer + turndown rule + sanitizer
+  // allowances so the token round-trips byte-stable. Omit them for exactly the
+  // GFM behaviour this plugin has always had (fully backward compatible).
+
+  /** The broadcast item (e.g. `{ id:"@channel", display:"channel" }`). */
+  allowBroadcast?: { id: string; display: string };
+  /** `TagTokenItem` → the stored markdown token (NO trailing space; the engine adds it). */
+  serialize?: (item: TagTokenItem) => string;
+  /** The token grammar the marked tokenizer + host extractors share. */
+  parse?: {
+    /** e.g. `/@\[([^\]]+)\]\(([^)\s]+)\)/g`. */
+    pattern: RegExp;
+    /** capture groups → `{ id, display }`. */
+    toItem: (m: RegExpExecArray) => TagTokenItem;
+  };
+  /** Build the read-render chip Node (defaults to a `span.ew-mention`). */
+  render?: (item: TagTokenItem, resolve?: ResolveMention) => Node;
+  /** Relabel a stored mention at render time (deleted-account relabel). */
+  resolveMention?: ResolveMention;
 }
 
 const ZWSP = String.fromCharCode(0x200b);
@@ -53,6 +106,9 @@ interface Entry {
   href: string | null;
   hint?: string;
   create?: boolean;
+  /** Present only in TOKEN MODE — the item picking this entry stores as a
+   *  custom `@[Display](id)` token (via `buildMentionChipNode` → `serialize`). */
+  token?: TagTokenItem;
 }
 
 interface MenuState {
@@ -169,11 +225,26 @@ export function tags(options: TagsOptions): EdodoPlugin {
   };
 
   const showMenu = (ctx: EditorContext, query: string, block: HTMLElement, items: TagItem[]): void => {
-    const entries: Entry[] = items.map((it) => ({
-      label: it.label,
-      hint: it.hint,
-      href: resolveHref(it),
-    }));
+    const entries: Entry[] = [];
+    // TOKEN MODE only: a synthetic broadcast entry (e.g. `@channel`) leads the
+    // menu for an empty or prefix-matching query, so picking it stores the
+    // broadcast token exactly like any other mention.
+    if (tokenMode && options.allowBroadcast) {
+      const b = options.allowBroadcast;
+      if (query === "" || b.display.toLowerCase().startsWith(query.toLowerCase())) {
+        entries.push({ label: b.display, href: null, token: { id: b.id, display: b.display } });
+      }
+    }
+    for (const it of items) {
+      entries.push({
+        label: it.label,
+        hint: it.hint,
+        href: resolveHref(it),
+        // In token mode, carry the id/display so `pick()` inserts a chip that
+        // `serialize()` turns into exactly `serialize(item)`.
+        token: tokenMode ? { id: it.id ?? "", display: it.display ?? it.label } : undefined,
+      });
+    }
     if (allowCreate && query && entries.length === 0) {
       entries.push({ label: query, href: resolveHref({ label: query }), create: true });
     }
@@ -220,9 +291,16 @@ export function tags(options: TagsOptions): EdodoPlugin {
       // keeps the caret placeable after the chip. The serializer's tidy pass
       // writes it back as a plain space.
       const space = document.createTextNode(NBSP);
-      const node: Node = entry.href
-        ? tagChip(entry.href, trigger + entry.label)
-        : document.createTextNode(trigger + entry.label);
+      // TOKEN MODE: a picked item with a token becomes a mention chip whose
+      // serialize() yields exactly `serialize(item)` — the same chip the
+      // stored-token decorate path builds. Otherwise the historical GFM
+      // behaviour is byte-identical: linked → chip anchor, else plain text.
+      const node: Node =
+        tokenMode && entry.token
+          ? buildMentionChipNode(entry.token)
+          : entry.href
+            ? tagChip(entry.href, trigger + entry.label)
+            : document.createTextNode(trigger + entry.label);
       range.insertNode(space);
       range.insertNode(node); // inserts at the range start — before the space
       ctx.dom.placeCaretAfter(space);
@@ -252,7 +330,120 @@ export function tags(options: TagsOptions): EdodoPlugin {
     });
   };
 
-  return definePlugin({
+  // ── Custom-token (mention) seam ─────────────────────────────────────────────
+  // Active only when BOTH serialize and parse are supplied. It registers the
+  // paired marked tokenizer + turndown rule so a host's custom token (e.g.
+  // `@[Display](id)`) round-trips byte-stable, and decorates stored chips in
+  // the live editor. When absent, everything below is inert and the plugin is
+  // exactly its historical GFM-link self.
+  const tokenMode = !!(options.serialize && options.parse);
+  const extName = `mention_${options.name ?? "tags"}`;
+  const rendered = new WeakSet<Node>();
+
+  const buildMentionMarkdown = (): MarkdownExtensionSpec => {
+    const parseCfg = options.parse!;
+    const flags = parseCfg.pattern.flags.replace(/[gy]/g, "");
+    // Wrap in a non-capturing group so a top-level alternation in the host's
+    // pattern isn't broken by the `^` anchor; inner capture indices survive.
+    const anchored = new RegExp(`^(?:${parseCfg.pattern.source})`, flags);
+    const search = new RegExp(parseCfg.pattern.source, flags);
+    const marked: MarkedExtension[] = [{
+      extensions: [{
+        name: extName,
+        level: "inline",
+        start(src: string) {
+          const idx = src.search(search);
+          return idx < 0 ? undefined : idx;
+        },
+        tokenizer(src: string) {
+          const m = anchored.exec(src);
+          if (!m) return undefined;
+          return { type: extName, raw: m[0], item: parseCfg.toItem(m) };
+        },
+        renderer(token) {
+          return mentionChipHtml(token.item as TagTokenItem);
+        },
+      }],
+    }];
+    return {
+      marked,
+      turndown: (td: TurndownService) => {
+        td.addRule(extName, {
+          filter: (node) =>
+            node.nodeName === "SPAN" && (node as HTMLElement).hasAttribute("data-mention-id"),
+          replacement: (_content, node) => {
+            const el = node as HTMLElement;
+            return options.serialize!({
+              id: el.getAttribute("data-mention-id") ?? "",
+              display: el.getAttribute("data-mention-display") ?? "",
+            });
+          },
+        });
+      },
+    };
+  };
+
+  const mentionChipHtml = (item: TagTokenItem): string => {
+    const id = String(item.id ?? "");
+    const display = String(item.display ?? "");
+    const shown = options.resolveMention?.(id, display)?.display ?? display;
+    return (
+      `<span class="ew-mention" data-mention-id="${escapeAttr(id)}"` +
+      ` data-mention-display="${escapeAttr(display)}" contenteditable="false">` +
+      `${escapeAttr(trigger + shown)}</span>`
+    );
+  };
+
+  /**
+   * Build the read-render chip Node for a token item. The single builder shared
+   * by BOTH the stored-token decorate path AND the interactive menu-pick, so a
+   * newly-picked mention is byte-identical to a loaded one:
+   *   • with `options.render` → the host's node (added to `rendered`);
+   *   • else a default `span.ew-mention[data-mention-id][data-mention-display]
+   *     [contenteditable=false]` whose text is trigger + (resolved) display.
+   * The `data-mention-*` attributes are exactly what `serialize()`'s turndown
+   * rule reads, so `serialize(chip) === serialize(item)`.
+   */
+  const buildMentionChipNode = (item: TagTokenItem): Node => {
+    if (options.render) {
+      const node = options.render(item, options.resolveMention);
+      rendered.add(node);
+      return node;
+    }
+    const span = document.createElement("span");
+    span.className = "ew-mention";
+    span.setAttribute("data-mention-id", item.id);
+    span.setAttribute("data-mention-display", item.display);
+    span.setAttribute("contenteditable", "false");
+    const shown = options.resolveMention?.(item.id, item.display)?.display ?? item.display;
+    span.textContent = trigger + shown;
+    rendered.add(span);
+    return span;
+  };
+
+  // Live-editor pass: adopt any stored mention chip (from a setMarkdown parse).
+  // Runs OUTSIDE transact — same precedent as `decorate`: it never changes the
+  // serialized value (data attrs are preserved), only the visible surface.
+  const decorateMentions = (ctx: EditorContext): void => {
+    ctx.root.querySelectorAll<HTMLElement>("span[data-mention-id]").forEach((span) => {
+      if (rendered.has(span)) return;
+      const id = span.getAttribute("data-mention-id") ?? "";
+      const display = span.getAttribute("data-mention-display") ?? "";
+      if (options.render) {
+        span.replaceWith(buildMentionChipNode({ id, display }));
+      } else {
+        span.classList.add("ew-mention");
+        span.setAttribute("contenteditable", "false");
+        const shown = options.resolveMention?.(id, display)?.display ?? display;
+        span.textContent = trigger + shown;
+        rendered.add(span);
+      }
+    });
+  };
+
+  const mention = tokenMode ? buildMentionMarkdown() : null;
+
+  const plugin: EdodoPlugin = {
     name: options.name ?? "tags",
 
     setup(ctx) {
@@ -264,6 +455,7 @@ export function tags(options: TagsOptions): EdodoPlugin {
       };
       ctx.root.addEventListener("input", onInput);
       decorate(ctx);
+      if (tokenMode) decorateMentions(ctx);
       return () => {
         ctx.root.removeEventListener("input", onInput);
         closeMenu();
@@ -288,7 +480,10 @@ export function tags(options: TagsOptions): EdodoPlugin {
     },
 
     on: {
-      change: (_md, ctx) => decorate(ctx),
+      change: (_md, ctx) => {
+        decorate(ctx);
+        if (tokenMode) decorateMentions(ctx);
+      },
       // Caret left the trigger span (click elsewhere, arrow-left past the
       // trigger, selection left the editor) → close.
       selection: (info, ctx) => {
@@ -296,7 +491,17 @@ export function tags(options: TagsOptions): EdodoPlugin {
       },
       blur: () => closeMenu(),
     },
-  });
+  };
+
+  if (mention) {
+    plugin.markdown = mention;
+    plugin.sanitize = {
+      tags: ["span"],
+      attributes: { span: ["data-mention-id", "data-mention-display", "contenteditable"] },
+    };
+  }
+
+  return definePlugin(plugin);
 }
 
 function tagChip(href: string, text: string): HTMLAnchorElement {

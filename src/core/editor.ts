@@ -40,7 +40,7 @@ import { EditorUIImpl } from "./ui.js";
 import { openLinkEditor } from "./link-ui.js";
 import { toggleInlineTag, isInlineTagActive } from "./commands.js";
 import {
-  blockKindOf, currentBlock, currentListItem, getSelection, selectionInside,
+  blockKindOf, currentBlock, currentListItem, getSelection, getRange, selectionInside,
   selectionRect, getCaretOffset, setCaretOffset, placeCaretAtStart,
   placeCaretAtEnd, placeCaretAfter, createElement, ensureNotEmpty,
   textBeforeCaret, isAtBlockStart, deleteLeadingChars,
@@ -258,6 +258,39 @@ export class EdodoWrite {
     // (Were a void return treated as unhandled, a keybinding would fall
     // through to the browser default and apply the format twice.)
     return result !== false;
+  }
+
+  /**
+   * Insert text at the caret as ONE undo step + ONE change event. Caret-safe
+   * and non-destructive: with the caret inside the editor the text lands at the
+   * caret; with the caret elsewhere (a dictation button, a placeholder sidebar)
+   * the editor is focused and the text is appended as a NEW paragraph — never
+   * fused onto the prior line. The text is treated as Markdown. Returns false
+   * when read-only or given empty text.
+   */
+  insertText(text: string): boolean {
+    if (this.opts.readOnly || this.destroyed || !text) return false;
+    // Capture the caret BEFORE focusing — `.focus()` collapses the selection to
+    // the editor start in some engines (and in jsdom), which would drop the
+    // insert at the wrong place. `inside` decides caret-insert vs. append.
+    const inside = selectionInside(this.content);
+    const saved = inside ? getRange()?.cloneRange() ?? null : null;
+    return this.transact(() => {
+      this.content.focus();
+      if (inside && saved) {
+        const sel = getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(saved);
+      } else {
+        // Caret outside the editor → append a FRESH paragraph at the end and
+        // drop the text there; never fuse onto the prior line.
+        const p = createElement("p", {}, "<br>");
+        this.content.appendChild(p);
+        placeCaretAtStart(p);
+      }
+      insertMarkdown(this.content, text, this.pipeline);
+      return true;
+    });
   }
 
   /**

@@ -34,7 +34,11 @@ editor.destroy();
 | [`math()`](#math) | TeX equations, inline + block | `$x^2$` / `$$…$$` | `katex` |
 | [`diagrams()` / `edodoDraw()`](#diagrams-and-edododraw) | live diagram widgets | fenced code blocks | `edododraw` |
 | [`tags()`](#tags) | `#tag` / `@mention` chips from *your* source | plain GFM links / text | — |
+| [`emoji()`](#emoji) | `:shortcode:` ↔ glyph chips from *your* map | `:rocket:` (plain text) | — |
 | [`embeds()`](#embeds) | video / audio / bookmark embeds | a bare URL line | — |
+| [`footnote()`](#footnote) | `[^id]` references + definitions | `see[^1]` / `[^1]: note` | — |
+| [`file()`](#file) | file-attachment chips (+ optional unfurl) | `!file[name](url)` | — |
+| [`detailsToggle()`](#detailstoggle) | collapsible `<details>` blocks | `<details><summary>…</summary>…</details>` | — |
 
 Every syntax here obeys the project's **degradation contract**: a document
 written with a plugin stays valid, lossless Markdown in editors, renderers and
@@ -444,6 +448,113 @@ const mentions = tags({
 });
 ```
 
+### Custom-token (mention) seam
+
+By default a picked item is stored as **pure GFM** (a link, or plain text). But a
+host that needs a *stable, first-class mention* — one that survives a display
+rename, relabels a deleted account, and never collides with a real URL — can opt
+into **TOKEN MODE** by supplying **both** `serialize` and `parse`. The plugin
+then stores a custom token you define (EDodo uses `@[Display](id)`) and registers
+the paired marked tokenizer + turndown rule + sanitiser allowances so it
+round-trips byte-stable. Omit the pair and everything below is inert — the plugin
+is exactly its historical GFM self.
+
+| Option | Type | Description |
+|---|---|---|
+| `serialize` | `(item: TagTokenItem) => string` | `{ id, display }` → the stored token (no trailing space — the engine adds it). |
+| `parse.pattern` | `RegExp` | The token grammar (global), e.g. `/@\[([^\]]+)\]\(([^)\s]+)\)/g`. Shared with your own extractors. |
+| `parse.toItem` | `(m: RegExpExecArray) => TagTokenItem` | Capture groups → `{ id, display }`. |
+| `render` | `(item, resolve?) => Node` | Build the chip node (defaults to `span.ew-mention[contenteditable=false]`). |
+| `resolveMention` | `(id, frozenDisplay) => { display } \| null` | Relabel at RENDER time only; return `null` to keep the frozen display. |
+| `allowBroadcast` | `{ id, display }` | A synthetic entry (e.g. `@channel`) that leads the menu for an empty/matching query. |
+
+The item shape is `TagTokenItem = { id, display, subtitle?, avatar?, color? }` — a
+frozen `display` plus a stable `id`. `TagItem` (your `source` rows) is widened
+with the same optional `id` / `display`, so a token-mode source returns rows
+carrying both. `ResolveMention` is `(id: string, fallbackDisplay: string) => { display: string } | null`.
+
+**Menu-pick emits the token.** In token mode, picking a suggestion from the
+autocomplete menu inserts the mention chip directly (built by the same
+`render`/default builder as a loaded token), so it serializes to exactly
+`serialize(item)` — newly-composed mentions are stored as tokens, not GFM links.
+When `allowBroadcast` is set, its entry leads the menu and picks to the broadcast
+token.
+
+```ts
+import { strict as assert } from "node:assert";
+import { tags } from "edodo-write/plugins";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+
+// Supply BOTH serialize + parse to switch the plugin into TOKEN MODE.
+const mentions = tags({
+  name: "mentions",
+  trigger: "@",
+  source: () => [],                          // your user directory (async is fine)
+  allowBroadcast: { id: "@channel", display: "channel" },
+  serialize: (item) => `@[${item.display}](${item.id})`,
+  parse: {
+    pattern: /@\[([^\]]+)\]\(([^)\s]+)\)/g,
+    toItem: (m) => ({ display: m[1], id: m[2] }),
+  },
+  // Relabel a stored mention at RENDER time — the token is never rewritten.
+  resolveMention: (id) => (id === "u_ghost" ? { display: "Deleted user" } : null),
+});
+
+const codec = createCodec([mentions]);
+
+// The stored token round-trips byte-stable, @channel broadcast included.
+assertRoundTrip(codec, "hi @[Alice](u_1) and @[channel](@channel)");
+
+// It renders a contenteditable chip carrying the FROZEN display + id.
+const html = codec.parse("hi @[Alice](u_1)");
+assert.ok(html.includes('class="ew-mention"'));
+assert.ok(html.includes('data-mention-id="u_1"'));
+assert.ok(html.includes(">@Alice<"));
+
+// A deleted account is relabelled on screen, but the token stays original.
+const ghost = codec.parse("bye @[Alice](u_ghost)");
+assert.ok(ghost.includes(">@Deleted user<"));               // visible relabel
+assert.ok(ghost.includes('data-mention-display="Alice"'));  // frozen token intact
+assert.equal(codec.serialize(ghost), "bye @[Alice](u_ghost)"); // → the ORIGINAL
+```
+
+## emoji()
+
+`:shortcode:` ↔ a glyph chip, driven by **your** map — the package ships none.
+The stored form is the shortcode itself (`:rocket:`), so the Markdown stays
+lossless plain text. The visible node is the glyph, but a paired
+marked + turndown extension keeps the shortcode on the chip
+(`data-shortcode`) so it round-trips byte-stable. An **unknown** shortcode is
+left completely alone (`:nope:` survives verbatim), and times like `12:30:45`
+are never hijacked.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `map` | `Record<string, string>` | — (required) | shortcode → glyph (e.g. `{ rocket: "🚀" }`). Looked up lowercased. |
+| `trigger` | `string` | `":"` | Delimiter character. |
+| `storedForm` | `"shortcode" \| "unicode"` | `"shortcode"` | `"unicode"` serialises the bare glyph instead of `:name:`. |
+| `render` | `(glyph, code) => Node` | `span.ew-emoji` | Custom chip node for typed and stored emoji. |
+| `autocomplete` / `picker` | `boolean` | `true` | Reserved for the `:query` suggestion menu and browse-all picker (contract accepted now). |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { emoji } from "edodo-write/plugins";
+
+const codec = createCodec([emoji({ map: { rocket: "🚀", tada: "🎉" } })]);
+
+// Known shortcodes become glyph chips that carry the shortcode…
+const html = codec.parse("ship it :rocket:");
+assert.ok(html.includes('class="ew-emoji"'));
+assert.ok(html.includes('data-shortcode="rocket"'));
+// …and round-trip byte-stable, while unknown codes and times survive verbatim.
+assertRoundTrip(codec, "ship it :rocket: 🎉");
+assertRoundTrip(codec, "nah :nope: at 12:30:45");
+```
+
+**Degradation.** Without the plugin, `:rocket:` is ordinary plain text —
+visible, lossless, and the widely-understood shortcode convention.
+
 ## embeds()
 
 Notion-style media embeds whose Markdown form is **nothing but a bare URL
@@ -545,6 +656,84 @@ const plugin = embeds({
   },
 });
 ```
+
+## footnote()
+
+Markdown footnotes: an inline `[^id]` reference plus a line-anchored
+`[^id]: text` definition. References are numbered by **definition order** while
+the stored `id` is preserved on the chip, so the round-trip is byte-stable. An
+inline ref renders as `sup.ew-fn-ref > a`; the definitions are collected into a
+trailing `section.ew-footnotes`. An unmatched `[^id]` ref is left as literal
+text. The `insertFootnote` command inserts a fresh ref/definition pair. No
+options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { footnote } from "edodo-write/plugins";
+
+const codec = createCodec([footnote()]);
+const html = codec.parse("see[^1]\n\n[^1]: the note");
+assert.ok(html.includes('class="ew-fn-ref"'));
+assert.ok(html.includes('class="ew-footnotes"'));
+assertRoundTrip(codec, "see[^1]\n\n[^1]: the note");
+```
+
+**Degradation.** `[^1]` / `[^1]: …` is the widely-supported (GFM-adjacent)
+footnote syntax — visible, lossless text in any plugin-less viewer, and
+rendered natively by GitHub.
+
+## file()
+
+File-attachment chips whose Markdown form is `!file[name](url)` (the name may
+be empty). In the editor each becomes a non-editable `a.ew-file` with
+`data-file-name` / `data-file-url` and a 📎 label; an optional
+`!unfurl[title](url)` sibling renders a link-preview row. The `insertFile`
+command (`{ name, url }`) inserts one, and a host `uploader` wires a slash
+item + file picker.
+
+| Option | Type | Description |
+|---|---|---|
+| `uploader` | `(file: File) => Promise<string \| { url, name? }>` | Upload handler behind the *Attach file* slash item. Without it the affordance is inert — the host drives insertion via `insertFile`. |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { file } from "edodo-write/plugins";
+
+const codec = createCodec([file()]);
+const html = codec.parse("!file[report.pdf](https://example.com/r.pdf)");
+assert.ok(html.includes('class="ew-file"'));
+assertRoundTrip(codec, "!file[report.pdf](https://example.com/r.pdf)");
+assertRoundTrip(codec, "!file[](https://example.com/r.pdf)"); // empty name is fine
+```
+
+**Degradation.** Without the plugin, `!file[name](url)` is literal text (an
+image-like token that no renderer resolves) — visible and lossless; the URL is
+right there to click through.
+
+## detailsToggle()
+
+Collapsible sections stored as native `<details><summary>…</summary>…</details>`
+HTML. The summary renders inline Markdown and the body block Markdown, each
+re-serialised through a nested turndown so the round-trip is byte-stable.
+`data-md-open` maps to the native `open` attribute; `data-md-block` preserves a
+verbatim block form. The `insertDetailsBlock` command inserts a fresh toggle.
+No options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { detailsToggle } from "edodo-write/plugins";
+
+const codec = createCodec([detailsToggle()]);
+assertRoundTrip(codec, "<details><summary>Title</summary>content</details>");
+assertRoundTrip(codec, "<details data-md-open><summary>**S**</summary>body</details>");
+```
+
+**Degradation.** `<details>`/`<summary>` is raw HTML that Markdown passes
+through — GitHub and most renderers show a working, collapsible block with no
+plugin at all.
 
 ## Optional peer dependencies
 

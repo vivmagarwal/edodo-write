@@ -19,8 +19,11 @@
 // stylesheet explicitly via `import "edodo-write/styles.css"`).
 import "../styles.css";
 
-import { parseMarkdown, type ParseOptions } from "../core/parse.js";
+import { parseMarkdown, createMarkdownParser, type ParseOptions } from "../core/parse.js";
 import { htmlToMarkdown } from "../core/serialize.js";
+import { corePreset } from "../core/preset.js";
+import { resolvePlugins } from "../core/plugin.js";
+import type { EdodoPlugin } from "../core/types.js";
 
 export { EdodoWrite } from "../core/editor.js";
 export { parseMarkdown, createMarkdownParser, decorateTaskLists } from "../core/parse.js";
@@ -68,9 +71,47 @@ export type { ParseOptions } from "../core/parse.js";
 export type { SerializerExtension } from "../core/serialize.js";
 export type { MarkdownPipeline } from "../core/clipboard.js";
 
+export { toPlainText } from "./plain-text.js";
+export type { PlainTextOptions } from "./plain-text.js";
+
 /** Markdown → sanitised HTML. Alias of `parseMarkdown` for symmetry. */
 export function toHTML(markdown: string, opts?: ParseOptions): string {
   return parseMarkdown(markdown, opts);
+}
+
+/** A reusable, plugin-aware render codec (see `createRenderCodec`). */
+export interface RenderCodec {
+  /** Markdown → sanitised, plugin-aware HTML. */
+  render(md: string, opts?: ParseOptions): string;
+}
+
+/**
+ * Build a plugin-aware render codec ONCE and reuse it across renders (SSR
+ * loops, hot read paths). This is the *same* parse half an editor built with
+ * these plugins uses (`resolvePlugins([corePreset(), ...plugins])` →
+ * `createMarkdownParser(registry.markedExtensions, registry.sanitize)`), so
+ * read-only render output matches what the editor would round-trip — the RFC's
+ * "render codec === editor codec" invariant. Node-safe: the sanitiser is
+ * DOM-free, so this runs in Next.js server components / edge just as well as in
+ * the browser.
+ */
+export function createRenderCodec(plugins: EdodoPlugin[] = [], exclude?: string[]): RenderCodec {
+  const registry = resolvePlugins([corePreset(), ...plugins], exclude);
+  const parse = createMarkdownParser(registry.markedExtensions, registry.sanitize);
+  return { render: (md, opts) => parse(md, opts) };
+}
+
+/**
+ * Markdown → sanitised, plugin-aware HTML in one call. Builds the codec fresh
+ * each call; for hot paths build a `createRenderCodec` once and reuse it.
+ */
+export function renderMarkdownWithPlugins(
+  md: string,
+  plugins?: EdodoPlugin[],
+  opts?: ParseOptions & { exclude?: string[] },
+): string {
+  const { exclude, ...parseOpts } = opts ?? {};
+  return createRenderCodec(plugins, exclude).render(md, parseOpts);
 }
 
 /** HTML → Markdown. Alias of `htmlToMarkdown`. */

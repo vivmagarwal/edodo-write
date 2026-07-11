@@ -380,6 +380,9 @@ export const coreCommands: Record<string, CommandSpec<any>> = {
     isActive: (ctx) => blockKindOf(currentBlock(ctx.root)) === "codeBlock",
   },
   divider: { run: (ctx) => insertDivider(ctx.root) },
+  // The caret-safe logic lives on the editor instance (it must capture the
+  // caret BEFORE focusing); the command is the registry entry point.
+  insertText: { run: (ctx, payload: { text: string }) => ctx.editor.insertText(payload?.text ?? "") },
   image: { run: (ctx, payload: { src: string; alt?: string }) => insertImage(ctx.root, payload) },
   table: {
     run: (ctx, payload?: { rows?: number; cols?: number }) => insertTable(ctx.root, payload),

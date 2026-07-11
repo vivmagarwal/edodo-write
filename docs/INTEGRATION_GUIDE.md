@@ -292,6 +292,88 @@ assertRoundTrip(codec, "some ==highlighted== words"); // throws on divergence
 assert.equal(codec.serialize(codec.parse("==hi==")), "==hi==");
 ```
 
+### Server-side & framework-agnostic APIs
+
+These run in **bare Node** (Next.js server components, edge, workers, CLIs) —
+the sanitiser and every helper below are DOM-free.
+
+**Plugin-aware render (`edodo-write`).** `renderMarkdownWithPlugins(md, plugins)`
+renders Markdown to sanitised HTML through the *same* codec an editor built
+with those plugins uses, so read-only output matches what the editor would
+round-trip. For hot paths build the codec once with
+`createRenderCodec(plugins)` and reuse it.
+
+```ts
+import { renderMarkdownWithPlugins, createRenderCodec } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+assert.ok(renderMarkdownWithPlugins("a ==b==", [highlight()]).includes("<mark>b</mark>"));
+
+const codec = createRenderCodec([highlight()]); // build once, reuse
+assert.ok(codec.render("a ==b==").includes("<mark>b</mark>"));
+```
+
+**Plain-text excerpts (`edodo-write`).** `toPlainText(md, opts)` walks the
+Markdown token tree (never HTML-strip) to a clean excerpt — for SEO meta,
+search indexes, notifications. Supports `maxLength` (word-boundary truncation
+with an ellipsis), `preserveLineBreaks`, and resolves plugin tokens (emoji →
+glyph, mention → `@Display`).
+
+```ts
+import { toPlainText } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+assert.equal(toPlainText("# Title\n\nSome **bold** text."), "Title Some bold text.");
+assert.equal(toPlainText("a very long sentence here", { maxLength: 10 }), "a very…");
+```
+
+**Node-safe parse / visitor API (`edodo-write/parse`).** Code-aware Markdown
+utilities that never touch a fenced/inline-code span: `splitCodeSegments`,
+`stripCodeBlocks`, `markCodeLines`, `extractTokens`, `parseTokens` (a token
+tree that applies plugin grammars), and `toggleTaskInMarkdown(md, index, checked)`
+for task-list checkboxes.
+
+```ts
+import { toggleTaskInMarkdown, stripCodeBlocks } from "edodo-write/parse";
+import { strict as assert } from "node:assert";
+
+assert.equal(toggleTaskInMarkdown("- [ ] a\n- [ ] b", 1, true), "- [ ] a\n- [x] b");
+assert.equal(stripCodeBlocks("text\n\n```\ncode\n```").trim(), "text");
+```
+
+**Email render adapter (`edodo-write/email`).** `toEmailHtml(md, opts)` renders
+Markdown to inline-styled email HTML (mail-client safe: `style=""` on every
+element, headings clamped to h2–h4, links forced `target=_blank`, tables
+dropped, images → links, `{{placeholder}}` substitution) plus a plain-text
+twin, then runs a restricted email allow-list sanitiser. Themes/shells/footers
+are injectable; the shipped `NEUTRAL_EMAIL_THEME` carries zero brand strings.
+`createEmailRenderer(defaults)` binds a house style once. Never throws.
+
+```ts
+import { toEmailHtml } from "edodo-write/email";
+import { strict as assert } from "node:assert";
+
+const { html, text } = toEmailHtml("# Hi\n\nWelcome **aboard**.");
+assert.ok(html.includes("style=")); // every element inline-styled
+assert.ok(text.includes("Welcome aboard"));
+```
+
+**Configurable HTML ingest (`edodo-write/ingest`).** `createHtmlToMarkdown(opts)`
+returns `{ htmlToMarkdown, service }` — an isolated turndown instance for
+pasting/importing external HTML, with configurable turndown options, gfm
+toggle, `stripTags`, and custom rules, plus dual defence against dangerous
+tags. `looksLikeHtml(str)` is a cheap gate before converting.
+
+```ts
+import { createHtmlToMarkdown, looksLikeHtml } from "edodo-write/ingest";
+import { strict as assert } from "node:assert";
+
+const { htmlToMarkdown } = createHtmlToMarkdown();
+assert.equal(looksLikeHtml("<p>hi</p>"), true);
+assert.equal(htmlToMarkdown("<h1>Title</h1><p>body</p>").trim(), "# Title\n\nbody");
+```
+
 ## Plugins
 
 Plugins are plain objects created with `definePlugin({ name, … })` and passed to
@@ -308,14 +390,17 @@ mechanics) is deliberately not pluggable.
 See the **[Plugin guide](PLUGIN_GUIDE.md)** for the full plugin API, and
 `src/plugins/highlight.ts` for the canonical ~50-line example.
 
-**First-party plugins.** Six ship with the package, importable from
+**First-party plugins.** A set ships with the package, importable from
 `edodo-write/plugins`: `highlight()` (`==text==`), `callout()` (GitHub
 alerts), `math()` (`$…$` / `$$…$$` TeX, KaTeX when installed), `diagrams()` /
 `edodoDraw()` (fenced code → live diagram widgets, mermaid included),
 `tags({ source })` (`#tag`/`@mention` chips fed by your own suggestion
-source, stored as plain GFM), and `embeds()` (a bare URL line → video / audio
-/ bookmark widget). Each one's options, exact stored Markdown, and degradation
-story are documented in **[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
+source, stored as plain GFM), `emoji({ map })` (`:shortcode:` ↔ glyph chips),
+`embeds()` (a bare URL line → video / audio / bookmark widget), `footnote()`
+(`[^id]` references + definitions), `file()` (`!file[name](url)` attachment
+chips), and `detailsToggle()` (collapsible `<details>` blocks). Each one's
+options, exact stored Markdown, and degradation story are documented in
+**[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
 
 ## Built-in behaviours (no configuration)
 
