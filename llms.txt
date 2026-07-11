@@ -1,0 +1,21 @@
+# edodo-write
+
+> A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.
+
+## Docs
+
+- [Complete documentation in one file](https://vivmagarwal.github.io/edodo-write/llms-full.txt): every guide below, concatenated — fetch this for full context
+- [Getting started](https://github.com/vivmagarwal/edodo-write/blob/master/docs/GETTING_STARTED.md)
+- [Architecture](https://github.com/vivmagarwal/edodo-write/blob/master/docs/ARCHITECTURE.md)
+- [Plugin guide](https://github.com/vivmagarwal/edodo-write/blob/master/docs/PLUGIN_GUIDE.md)
+- [First-party plugins](https://github.com/vivmagarwal/edodo-write/blob/master/docs/FIRST_PARTY_PLUGINS.md)
+- [Embed in your app (API)](https://github.com/vivmagarwal/edodo-write/blob/master/docs/INTEGRATION_GUIDE.md)
+- [Image hosting](https://github.com/vivmagarwal/edodo-write/blob/master/docs/IMAGE_HOSTING.md)
+- [Markdown support & shortcuts](https://github.com/vivmagarwal/edodo-write/blob/master/docs/MARKDOWN_AND_SHORTCUTS.md)
+- [Development guide](https://github.com/vivmagarwal/edodo-write/blob/master/docs/DEVELOPMENT.md)
+
+## Package
+
+- [npm](https://www.npmjs.com/package/edodo-write): `npm i edodo-write`
+- [Source repo](https://github.com/vivmagarwal/edodo-write)
+- [Live playground](https://vivmagarwal.github.io/edodo-write/)

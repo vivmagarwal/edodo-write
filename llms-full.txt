@@ -1,0 +1,3904 @@
+# edodo-write — complete documentation (v0.9.0)
+
+> A Notion/Medium-style WYSIWYG editor whose single source of truth is Markdown. Type-to-format, a slash menu, a floating selection toolbar — framework-agnostic core with an optional React wrapper.
+
+- Live site (rendered docs + playground): https://vivmagarwal.github.io/edodo-write/
+- npm package: https://www.npmjs.com/package/edodo-write  (`npm i edodo-write`)
+- Source repo: https://github.com/vivmagarwal/edodo-write
+
+This ONE file concatenates every guide, generated verbatim from the source repo.
+
+---
+
+# Getting started
+
+# Getting started
+
+`edodo-write` is a Notion / Medium-style WYSIWYG editor whose **single source of
+truth is Markdown**. You edit rich text; you read and store Markdown.
+
+## Install
+
+```bash
+npm i edodo-write
+```
+
+`react` / `react-dom` are optional peers — you only need them for the React
+wrapper. The core is framework-free (3 runtime dependencies: `marked`,
+`turndown`, and the turndown GFM plugin).
+
+The package ships five entry points:
+
+| Import | Contents |
+|---|---|
+| `edodo-write` | `EdodoWrite` core + functional helpers (framework-free) |
+| `edodo-write/react` | `<EdodoWriteEditor />` + `<Markdown />` |
+| `edodo-write/plugins` | First-party plugins: `highlight()`, `callout()`, `math()`, `diagrams()` / `edodoDraw()`, `tags()`, `embeds()` + the widget helpers |
+| `edodo-write/testing` | `createCodec` / `assertRoundTrip` for plugin authors |
+| `edodo-write/styles.css` | The stylesheet — import it explicitly |
+
+## Vanilla (no framework)
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import "edodo-write/styles.css";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "# Hello\n\nType **markdown** and watch it render.",
+  placeholder: "Write something…",
+  onChange: (markdown) => console.log(markdown),
+});
+
+// Markdown is the value — read or replace it at any time.
+assert.equal(editor.getMarkdown(), "# Hello\n\nType **markdown** and watch it render.");
+
+editor.setMarkdown("# A new document");
+assert.equal(editor.getMarkdown(), "# A new document");
+
+editor.destroy();
+```
+
+## React
+
+```tsx
+import { useState } from "react";
+import { EdodoWriteEditor, Markdown } from "edodo-write/react";
+import "edodo-write/styles.css";
+
+export function Notes() {
+  const [md, setMd] = useState("# Hello\n\nStart writing…");
+  return (
+    <div>
+      <EdodoWriteEditor value={md} onChange={setMd} placeholder="Write…" />
+      {/* read-only render of stored Markdown, sharing the editor's stylesheet */}
+      <Markdown value={md} />
+    </div>
+  );
+}
+```
+
+## Plugins in one minute
+
+Optional features ship as plugins; pass them at construction. Six are
+first-party: `highlight()` (`==text==` ↔ `<mark>`, with a `Mod-Shift-H`
+shortcut and a toolbar button), `callout()` (Notion-style callouts stored as
+GitHub alert syntax, `> [!NOTE]`), `math()` (`$x^2$` / `$$…$$` TeX — KaTeX
+when installed), `diagrams()` / `edodoDraw()` (fenced ` ```edd ` and
+` ```mermaid ` blocks rendered as live diagrams), `tags({ source })`
+(`#tag`/`@mention` chips fed by your own suggestion source), and `embeds()`
+(a bare URL line becomes a video / audio / bookmark widget). Every one stores
+plain, degradable Markdown — the full guide is
+**[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { highlight, callout } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "Some ==highlighted== words.",
+  plugins: [highlight(), callout()],
+  exclude: ["taskList"], // remove core features you don't want
+});
+
+// The plugin's markdown extension round-trips ==…== byte-for-byte.
+assert.equal(editor.getMarkdown(), "Some ==highlighted== words.");
+// Excluded features are gone: exec refuses and returns false.
+assert.equal(editor.exec("taskList"), false);
+editor.destroy();
+```
+
+## Static HTML / CDN (no build step)
+
+Two supported routes for plain HTML pages:
+
+**Self-contained bundle** (no import map, no third-party rewriting — one
+stylesheet, one module; ~52 KB gzipped with all first-party plugins):
+
+```html
+<link rel="stylesheet" href="https://unpkg.com/edodo-write/dist-lib/edodo-write.css">
+<div id="app"></div>
+<script type="module">
+  import { EdodoWrite, highlight, callout, tags, embeds } from
+    "https://unpkg.com/edodo-write/dist-lib/standalone.js";
+  const editor = new EdodoWrite(document.getElementById("app"), {
+    value: "# Hello from a static page",
+    plugins: [highlight(), callout(), embeds()],
+    onChange: (md) => console.log(md),
+  });
+</script>
+```
+
+Also on jsDelivr: `https://cdn.jsdelivr.net/npm/edodo-write/dist-lib/standalone.js`.
+Bundlers get the same entry as `import … from "edodo-write/standalone"`.
+
+**esm.sh** (resolves the regular entries and their dependencies on the fly —
+including the optional `katex`/`edododraw` engines for math and diagrams):
+
+```html
+<script type="module">
+  import { EdodoWrite } from "https://esm.sh/edodo-write";
+  import { math, edodoDraw } from "https://esm.sh/edodo-write/plugins";
+</script>
+```
+
+In the standalone bundle the optional engines stay external by design:
+`math()` falls back to plain TeX and `edodoDraw()` shows a readable error
+unless `katex`/`edododraw` are reachable (add an import map, or use esm.sh).
+
+## What you get out of the box
+
+- **Type-to-format** — `# ` … `###### `, `- `, `1. `, `[ ] `, `> `, `` ``` ``,
+  `---`, and inline `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`.
+- **Slash menu** — `/` on an empty line (or list item) opens a grouped, filterable
+  block picker; multi-word queries like `/heading 1` work.
+- **Floating toolbar** on text selection (Medium-style).
+- **Link popover** — ⌘/Ctrl+K, the toolbar button, or clicking an existing link
+  opens an inline edit/open/remove popover (no `window.prompt`).
+- **Block handles** — hover a block for a `+` insert button and a `⣿` grip:
+  drag to reorder, click for a block menu (Turn into, Duplicate, Copy as
+  Markdown, Delete).
+- **Markdown clipboard** — copy puts Markdown on the clipboard; paste accepts
+  Markdown *and* rich HTML (converted to Markdown, then rendered as blocks).
+- **Undo/redo** — a Markdown-snapshot history (⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z or
+  ⌘/Ctrl+Y), consistent across every operation.
+- **Interactive task lists** — tick a checkbox and the Markdown flips
+  `[ ]` → `[x]`.
+- **Tables** — `/table` inserts a GFM table; type in cells, Tab/Enter walk
+  them (Tab at the end adds a row), and hovering a cell reveals Notion-style
+  column/row handles that insert, move, clear, and
+  columns — see [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).
+- **Images** — paste a screenshot, drag-and-drop files, or use `/image`
+  (Upload button or a URL + alt form); hosting is pluggable via `uploadImage`,
+  with a zero-config `data:`-URL fallback, and the value is always just
+  `![alt](url)` — see [Image hosting](IMAGE_HOSTING.md).
+- **A plugin API** — commands, input rules, keymaps, slash/toolbar/block-menu
+  items, and paired markdown extensions.
+- **Light & dark** themes via CSS variables.
+
+## Where next
+
+- **[Embed in your app (API)](INTEGRATION_GUIDE.md)** — every option, method,
+  event and command; React contract; styling.
+- **[Markdown support & shortcuts](MARKDOWN_AND_SHORTCUTS.md)** — everything you
+  can type, the full keyboard table, and the serialised-Markdown flavour.
+- **[Image hosting](IMAGE_HOSTING.md)** — where image bytes go: the
+  `uploadImage` contract, worked hosting configs, the data-URL fallback.
+- **[First-party plugins](FIRST_PARTY_PLUGINS.md)** — highlight, callout,
+  math, diagrams, tags, embeds: options, the exact Markdown each stores, the
+  degradation story.
+- **[Plugin guide](PLUGIN_GUIDE.md)** — write your own plugin.
+- **[Architecture](ARCHITECTURE.md)** — how the Markdown round-trip works.
+
+---
+
+# Architecture
+
+# Architecture
+
+edodo-write is a thin controller over a single native `contentEditable`
+surface. The guiding model — the **façade over Markdown** — is: the surface is
+the *view*, **Markdown is the state**, and parse/serialize is the *reconciler*.
+There is no bespoke document model to learn, migrate, or store; the bytes you
+persist are Markdown, and everything else exists to keep that contract honest.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# Title\n\nHello **world**" });
+
+// The view is HTML; the state is Markdown.
+assert.ok(editor.getHTML().includes("<h1>Title</h1>"));
+assert.equal(editor.getMarkdown(), "# Title\n\nHello **world**");
+editor.destroy();
+```
+
+## Pipeline
+
+```
+Markdown ──parse (marked + plugin extensions + sanitize + task decoration)──▶ HTML view
+   ▲                                                                             │
+   └────────── serialize (turndown + gfm + plugin rules + fence-aware tidy) ◀────┘
+                                (on every edit)
+```
+
+- **Parse** (`src/core/parse.ts`) — a per-editor `new Marked({ gfm: true })`
+  with any plugin `marked` extensions applied, then `sanitizeHtml`, then
+  task-list decoration (interactive checkboxes + the conventional
+  `task-list-item` classes). `{ sanitize: false }` returns raw marked HTML for
+  trusted, DOM-free SSR; `{ decorateTasks: false }` keeps GFM's disabled
+  checkboxes for export paths (the clipboard's HTML flavour).
+- **Serialize** (`src/core/serialize.ts`) — a per-editor `TurndownService`
+  (ATX headings, `-` bullets, fenced code, `*`/`**` delimiters, inlined links)
+  plus the GFM plugin (tables, strikethrough, task lists) and plugin rules.
+  Notable choices: hard breaks serialize as **backslash breaks** (turndown's
+  default two-space break is invisible and destroyed by whitespace trims);
+  `<` and entity-forming `&` are escaped so prose like `a<b>c` survives a
+  round-trip; empty paragraphs are dropped. The output then passes through a
+  **fence-aware tidy**: NBSP → space, one-space list markers, trailing-space
+  trim, blank-line collapsing, ZWSP stripping — none of which ever touches the
+  inside of a code fence (pasted code keeps its bytes).
+- **Sanitize** (`src/core/sanitize.ts`) — a dependency-free allow-list
+  scrubber. Unknown tags are unwrapped (children kept); scripts, iframes,
+  event handlers and script-scheme URLs are removed; only checkbox `<input>`s
+  survive; `target="_blank"` links get `rel="noopener noreferrer"`. Plugins may
+  *widen* the allow-list, never lower the denial floor (see below).
+
+## Per-instance pipeline (why the singletons had to die)
+
+Earlier versions called the global `marked` singleton and one module-level
+`TurndownService`. That breaks in three ways once plugins exist:
+
+1. `marked.use(extension)` mutates **global** state — a plugin's tokenizer
+   would leak into every other editor on the page and into any other consumer
+   of marked in the application.
+2. Two editors with different plugin sets need two different codecs.
+3. The clipboard must encode/decode with the **same** codec the editor renders
+   with, or plugin content silently corrupts on the way through copy/paste.
+
+So each `EdodoWrite` now builds its own pipeline at construction:
+`createMarkdownParser(markedExtensions, sanitizeOptions)` (a fresh `new
+Marked()`), `createMarkdownSerializer(turndownExtensions)` (a fresh
+`TurndownService`), and that pipeline object is threaded through the clipboard
+handlers and exposed to plugins as `ctx.markdown`. The module-level
+`parseMarkdown` / `htmlToMarkdown` remain, bound to default instances, for
+standalone conversion. `createCodec` from `edodo-write/testing` builds the
+exact codec an editor with a given plugin set would use, so tests and SSR
+previews can match it byte-for-byte.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+
+const a = new EdodoWrite(document.createElement("div"), {
+  value: "some ==marked== text",
+  plugins: [highlight()],
+});
+const b = new EdodoWrite(document.createElement("div"), {
+  value: "some ==marked== text",
+});
+
+// Same page, same input, two different codecs — neither leaks into the other.
+assert.ok(a.getHTML().includes("<mark>marked</mark>"));
+assert.ok(!b.getHTML().includes("<mark>"));
+assert.equal(a.getMarkdown(), "some ==marked== text"); // and it round-trips
+a.destroy();
+b.destroy();
+```
+
+## Modules
+
+| File | Responsibility |
+|---|---|
+| `src/core/editor.ts` | `EdodoWrite` — mounts the surface, resolves plugins, owns events, undo history, the select-all reset, and all wiring. The only orchestrator. |
+| `src/core/types.ts` | The public type surface: `EdodoPlugin`, `EditorContext`, `CommandPayloads` (module-augmentable), options, events. |
+| `src/core/plugin.ts` | Plugin **resolution**: registries, collision detection (throws), key-string parsing, priority ordering, and `guard` (runtime error isolation). |
+| `src/core/preset.ts` | The **core preset** — every built-in feature expressed through the same plugin API third parties use. |
+| `src/core/commands.ts` | Built-in command implementations (manual-DOM block transforms, inline marks, link/image/divider). |
+| `src/core/input-rules.ts` | The type-to-format **runner** — owns the contentEditable gotchas so rule authors never see them. Rule *sets* live in preset/plugins. |
+| `src/core/keymap.ts` | Two tiers: registered bindings (pluggable) and the structural engine — Enter/Backspace/Tab splits and merges, undo routing, Mod-U swallow. |
+| `src/core/normalize.ts` | The **document normalizer** — re-establishes the schema after every mutation (see below). |
+| `src/core/clipboard.ts` | Copy/cut → Markdown + regenerated HTML; paste (Markdown, rich HTML, bare URL over selection) → real blocks. Pipeline-threaded. |
+| `src/core/parse.ts` | Markdown → sanitised HTML (per-instance `Marked`). |
+| `src/core/serialize.ts` | HTML → Markdown (per-instance `TurndownService` + fence-aware tidy). |
+| `src/core/sanitize.ts` | Allow-list HTML sanitiser with a non-negotiable denial floor. |
+| `src/core/slash-menu.ts` | The `/` picker: grouped items, word-wise multi-word filtering, works in empty list items. |
+| `src/core/toolbar.ts` | Floating selection toolbar (items from the registry). |
+| `src/core/block-handles.ts` | Left-gutter `+` / grip; pointer-based drag-to-reorder; grip *click* opens the block menu. |
+| `src/core/ui.ts` | Editor-owned floating-UI primitives (`popover` / `menu` / `notify`) with selection preservation, clamping, dismissal, teardown. |
+| `src/core/link-ui.ts` | The link popover (Mod-K, toolbar, click-a-link) built on `ui.ts`. |
+| `src/core/dom.ts` | Stateless selection/caret/DOM helpers — the shared toolbox, exposed to plugins as `ctx.dom`. |
+| `src/lib/index.ts` | Public core entry → `edodo-write`. |
+| `src/lib/react.tsx` | React wrapper → `edodo-write/react` (core never imports React). |
+| `src/lib/testing.ts` | `createCodec` / `assertRoundTrip` → `edodo-write/testing`. |
+| `src/plugins/highlight.ts` | First-party plugin: `==text==` ↔ `<mark>` → `edodo-write/plugins`. |
+| `src/plugins/callout.ts` | First-party plugin: GitHub alert callouts ↔ `<blockquote data-callout>`. |
+| `src/plugins/index.ts` | Plugin barrel (one module per plugin so bundlers tree-shake). |
+| `src/styles.css` | All editor/toolbar/slash/popover/drag styles, themed via CSS variables. |
+
+## The plugin registry (engine vs. features)
+
+Everything above the engine is a **feature** and flows through `EdodoPlugin`:
+commands, input rules, keybindings, slash items, toolbar buttons, block-menu
+items, paired markdown extensions, sanitizer widening, `setup`, lifecycle
+hooks. The built-ins are no exception — `corePreset()` in `preset.ts` registers
+them through the exact same API (deliberate dogfooding: the registry code path
+runs on every keystroke, so it cannot bit-rot). `options.exclude` removes core
+preset keys.
+
+The **engine** is deliberately *not* pluggable: structural Enter/Backspace/Tab
+semantics, the undo history, the clipboard contract, the sanitizer's denial
+floor, drag mechanics, and the document normalizer. These implement the
+contentEditable invariants whose violation corrupts documents. Plugins can
+*pre-empt* engine keys (a registered binding for `Enter` runs first) but never
+remove them.
+
+**Resolution** happens once, at construction: `resolvePlugins([corePreset(),
+...options.plugins])` flattens everything into per-instance registries. There
+is no runtime (un)registration — dynamic plugin churn is where stale-menu and
+half-torn-down-rule bugs live; re-create the editor to change the set (the
+React wrapper captures `plugins` on mount for the same reason).
+
+**Failure philosophy**, two-sided:
+
+- *Configuration mistakes throw at construction*, naming both offenders:
+  duplicate plugin names, duplicate command names, duplicate slash/toolbar/
+  block-menu item ids, malformed key strings. Never silent last-wins.
+- *Runtime mistakes are isolated*: every plugin contribution — command bodies,
+  rule callbacks, key handlers, menu actions, `isActive` probes, lifecycle
+  hooks — runs inside `guard()` (a try/catch). A throwing plugin logs and is
+  skipped for that event; one bad plugin must not kill typing.
+
+**Ordering**: the core preset registers at priority 0; plugins default to 100.
+Keybindings are sorted by priority (descending), then registration order — so
+a plugin can shadow `Mod-B`, and the structural key engine still runs last.
+Input rules run in registration order (core preset first, then plugins in
+array order).
+
+**Markdown extensions are paired** (`markdown: { marked, turndown }`): a parse
+extension without its serialize twin is a round-trip bug by construction. The
+formats are marked's and turndown's own — deliberately unwrapped. Prove
+stability with `assertRoundTrip` from `edodo-write/testing`.
+
+## The document normalizer
+
+`contentEditable` happily leaves the document in states the editor cannot work
+with:
+
+- **Select-all corruption** — select-all + Delete keeps the first block's
+  emptied shell, so the next keystroke lands inside a stale `<h1>`.
+- **Styled-span merges** — a native cross-block delete splices
+  `<span style="…">` runs into the surviving block.
+- **Unplaceable carets** — a cut can leave a block with no caret anchor, after
+  which typing goes into the *previous* block.
+- **Schema drift** — native edits drop bare text nodes or `<div>`s at the
+  root, after which input rules and the slash menu (which assume "root
+  children are blocks") silently die.
+
+Instead of patching each symptom at its call site, `normalizeDocument`
+(`src/core/normalize.ts`) re-establishes the schema invariants **after every
+mutation** — the `input` handler runs it *before* matching input rules, and
+`afterMutation` runs it after commands, paste, cut, drag, and block-menu
+actions:
+
+1. Root children are block elements only — stray inline/text runs are wrapped
+   into `<p>`, `<div>`s become paragraphs (or are unwrapped when they contain
+   blocks).
+2. Browser styling artifacts are removed (`span[style]`/`font` unwrapped,
+   stray `style` attributes dropped).
+3. Structural shells are repaired: lists with no `<li>` are removed, `<pre>`
+   always wraps a `<code>`, task items keep checkbox-first + a caret anchor.
+4. Every empty block gets a placeable caret (`<br>`, or a zero-width text node
+   inside `<pre><code>` where a `<br>` would mean a newline).
+5. A childless root gets its single empty paragraph back.
+
+The pass is cheap (one walk of the top-level children plus two targeted
+queries) and idempotent. It deliberately does **not** reset "empty-looking"
+documents — a freshly inserted empty heading is a legitimate state; the
+select-all replace/delete reset lives in the editor's `beforeinput` handler,
+where intent is known.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "" });
+
+// Simulate what a native edit can leave behind: a styled span spliced into
+// a heading by a cross-block delete, and a bare <div> from a native Enter.
+editor.content.innerHTML =
+  '<h1><span style="font-weight:400">merged</span></h1><div>typed</div>';
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+// The normalizer re-established the schema before anything else ran.
+assert.equal(editor.getHTML(), "<h1>merged</h1><p>typed</p>");
+assert.equal(editor.getMarkdown(), "# merged\n\ntyped");
+editor.destroy();
+```
+
+## Undo / redo
+
+A stack of **Markdown snapshots** (`{ md, caret }` in `editor.ts`, capped at
+300). Because Markdown is the state, undo literally restores previous state:
+`setMarkdown` re-hydrates the view and the caret is re-placed by plain-text
+offset (zero-width spaces excluded). Snapshots are recorded on every
+structural change and — debounced (~120 ms) — on typing pauses, so a burst of
+typing is one undo step. `transact()` batches any number of DOM mutations into
+one snapshot and one change event, and is re-entrant (nested transactions
+commit once, at the outermost level). This history is uniform across *all*
+operations — typing, formatting, paste, drag, plugin commands — unlike native
+`execCommand` undo, which cannot see manual DOM changes.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# One" });
+
+editor.setMarkdown("# One\n\ntwo"); // records a history snapshot
+editor.undo();
+assert.equal(editor.getMarkdown(), "# One");
+editor.redo();
+assert.equal(editor.getMarkdown(), "# One\n\ntwo");
+editor.destroy();
+```
+
+**The honest limitation:** history dedupes on the serialized Markdown, so two
+view states that serialize identically collapse into one undo step. Anything
+Markdown cannot express — a caret move, a selection, transient DOM the
+serializer strips — is invisible to history, and the caret restore after undo
+is a best-effort text offset, not an exact DOM position. This is the price of
+snapshot-as-Markdown, accepted deliberately: the alternative (a DOM-diff or
+operation log) would reintroduce exactly the competing document model this
+project exists to avoid.
+
+## Key contentEditable decisions
+
+The full invariants catalog (with the bugs each rule prevents) is in
+[DEVELOPMENT.md](DEVELOPMENT.md); the load-bearing decisions are:
+
+- **Block transforms are hand-rolled DOM, never `execCommand`.** Chrome
+  silently drops `execCommand` block ops (`formatBlock`,
+  `insertUnorderedList`, …) called synchronously inside an `input` event —
+  exactly where input rules run. Inline marks (bold/italic/strike) still use
+  `execCommand` from the toolbar/keymap, which run outside `input`.
+- **Enter/Backspace/Tab are intercepted** and performed as manual splits and
+  merges so the block model stays clean — real block tags (`<p>`, `<h1>`,
+  `<li>`, `<blockquote>`), never the stray `<div>` the browser inserts.
+- **Empty blocks get a `<br>` caret anchor** (`ensureNotEmpty`); inside
+  `<pre><code>` the anchor is a zero-width text node instead, because a `<br>`
+  there would mean a newline.
+- **Zero-width spaces park the caret** outside a freshly inserted inline mark
+  and after task checkboxes; they are stripped on serialize and never reach
+  the Markdown.
+- **A typed trailing space arrives as `U+00A0`** — normalized before input
+  rules match and mapped back to a plain space by the serializer tidy (never
+  inside code fences).
+- **One `contentEditable`, Markdown state** (the Medium model) rather than
+  Notion's per-block editors over a JSON block tree — simpler and
+  Markdown-native, at the cost of doing block splits/merges ourselves.
+
+## Build
+
+Vite, dual output:
+
+- `vite.lib.config.ts` → `dist-lib/` (what npm ships): four ESM entries —
+  `index`, `react`, `plugins`, `testing` — mapping to the package exports
+  `"."`, `"./react"`, `"./plugins"`, `"./testing"`, plus one stylesheet
+  (`"./styles.css"` → `edodo-write.css`, imported explicitly by consumers).
+  All dependencies are externalised; types come from `tsc -p tsconfig.lib.json`.
+- `vite.config.ts` → `dist/` — the playground/docs SPA for GitHub Pages.
+  `prebuild` regenerates `public/llms*.txt` from `docs/` via
+  `scripts/gen-llms-txt.mjs`.
+
+Testing is three-staged (Vitest/jsdom, Playwright, executable doc examples) —
+see [DEVELOPMENT.md](DEVELOPMENT.md). The plugin API itself is documented in
+[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
+
+---
+
+# Plugin guide
+
+# Plugin guide
+
+Everything above the engine is a plugin. Commands, type-to-format input rules,
+keyboard shortcuts, slash-menu items, toolbar buttons, block-menu items,
+Markdown syntax — the built-ins ship through the exact same API you are about
+to use (`src/core/preset.ts` is the core preset expressed as one big plugin,
+and living documentation of every extension point). This guide teaches that
+API end to end: the mental model, a first plugin, block plugins, the
+`EditorContext` toolbox, plugin UI, and the round-trip contract that keeps
+Markdown honest.
+
+Prerequisites: [Architecture](ARCHITECTURE.md) explains the façade-over-Markdown
+model and the plugin registry's place in it; the
+[Integration guide](INTEGRATION_GUIDE.md) covers the host-app API
+(`EdodoWrite`, options, events). This document assumes both and does not repeat
+them. Every `ts`/`js` code block below is executed by the test suite
+(`tests/docs-examples.test.ts`), so what you read is what runs.
+
+## The mental model
+
+A plugin is a **declarative bag of contributions** — a frozen plain object,
+created with `definePlugin({ name, … })` and passed to the constructor:
+
+| Field | What it contributes |
+|---|---|
+| `name` | Unique kebab-case identifier (an optional `:suffix` is allowed). |
+| `priority` | Ordering weight for input rules and keybindings. Core preset: `0`; plugins default to `100` — higher runs earlier. |
+| `commands` | Named `CommandSpec`s (`run` + optional `isActive`). |
+| `inputRules` | Block ("type `# ` at the start") and inline ("close the `==`") rules. |
+| `keymap` | `"Mod-Shift-h"` → command name or handler function. |
+| `slashItems` / `toolbarItems` / `blockMenuItems` | Entries for the `/` menu, the floating toolbar, and the block-handle menu. |
+| `markdown` | **Paired** marked + turndown extensions (see [the round-trip contract](#the-round-trip-contract)). |
+| `sanitize` | Additive allow-list widening so your parsed HTML survives. |
+| `setup` | Imperative escape hatch, runs once after mount; may return a cleanup. |
+| `on` | Lifecycle hooks: `change`, `selection`, `focus`, `blur`, `destroy`. |
+
+Three rules govern how the bag is consumed:
+
+1. **Registries are resolved once, at construction.**
+   `new EdodoWrite(host, { plugins })` flattens `[corePreset(), ...plugins]`
+   into per-instance registries and a per-instance Markdown pipeline. There is
+   no runtime (un)registration — dynamic plugin churn is where stale-menu and
+   half-torn-down-rule bugs live. To change the set, create a new editor (the
+   React wrapper captures `plugins` on mount for the same reason).
+
+2. **Configuration mistakes throw; runtime mistakes are isolated.**
+   Duplicate plugin names, duplicate command names, duplicate slash/toolbar/
+   block-menu item ids, and malformed key strings **throw at construction,
+   naming both offenders** — never silent last-wins. At runtime the polarity
+   flips: every contribution (command bodies, rule callbacks, key handlers,
+   menu actions, `isActive` probes, lifecycle hooks) runs inside a try/catch
+   (`guard`); a throwing plugin logs and is skipped for that event. One bad
+   plugin must not kill typing.
+
+3. **The engine is not pluggable.** Structural Enter/Backspace/Tab semantics,
+   the undo history, the clipboard contract, the sanitizer's denial floor, the
+   document normalizer, and drag mechanics implement the contentEditable
+   invariants whose violation corrupts documents. Plugins can *intercept*
+   engine keys — a registered binding for `"Enter"` runs before the engine,
+   and plugin keybindings (priority 100) run before the core preset (priority
+   0), so you can even shadow `Mod-b` — but the engine always runs last and
+   can never be removed.
+
+Both failure modes, demonstrated:
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+// A minimal but complete plugin: one command.
+const stamp = definePlugin({
+  name: "stamp",
+  commands: {
+    stamp: {
+      run: (ctx) => {
+        const p = document.createElement("p");
+        p.textContent = "stamped";
+        ctx.root.appendChild(p);
+      },
+    },
+  },
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "hello", plugins: [stamp] });
+assert.equal(editor.exec("stamp"), true);
+assert.equal(editor.getMarkdown(), "hello\n\nstamped");
+editor.destroy();
+
+// Configuration mistakes throw at construction, naming both offenders.
+const rival = definePlugin({
+  name: "rival",
+  commands: { stamp: { run: () => {} } },
+});
+const host2 = document.createElement("div");
+document.body.appendChild(host2);
+assert.throws(
+  () => new EdodoWrite(host2, { plugins: [stamp, rival] }),
+  /command "stamp" registered by both "stamp" and "rival"/,
+);
+// Same for duplicate plugin names — and definePlugin validates upfront.
+assert.throws(
+  () => new EdodoWrite(host2, { plugins: [stamp, stamp] }),
+  /duplicate plugin name "stamp"/,
+);
+assert.throws(() => definePlugin({ name: "Bad Name!" }), /kebab-case/);
+assert.throws(
+  () => definePlugin({ name: "ok", keymap: { "Mod-Fnord-x": "bold" } }),
+  /unknown modifier/,
+);
+```
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+// Runtime mistakes are isolated: a throwing command logs and is skipped —
+// the editor (and typing) survives.
+const faulty = definePlugin({
+  name: "faulty",
+  commands: { boom: { run: () => { throw new Error("kaboom"); } } },
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "hello", plugins: [faulty] });
+
+const errors: unknown[] = [];
+const origError = console.error;
+console.error = (...args: unknown[]) => { errors.push(args); };
+editor.exec("boom");
+console.error = origError;
+
+assert.ok(errors.length > 0);                    // logged, not thrown
+assert.equal(editor.getMarkdown(), "hello");     // document untouched
+assert.equal(editor.exec("paragraph"), true);    // editor still works
+editor.destroy();
+```
+
+From React, pass plugins to the wrapper — they are captured on mount, so
+remount (e.g. with a `key`) to change the set:
+
+```tsx
+import { EdodoWriteEditor } from "edodo-write/react";
+import { highlight, callout } from "edodo-write/plugins";
+
+export function Notes(props: { value: string; onChange: (md: string) => void }) {
+  return (
+    <EdodoWriteEditor
+      value={props.value}
+      onChange={props.onChange}
+      plugins={[highlight(), callout()]}
+    />
+  );
+}
+```
+
+## Your first plugin: highlight
+
+`==text==` ↔ `<mark>` — the canonical example, shipped as
+`src/plugins/highlight.ts` and importable from `edodo-write/plugins`. It
+exercises every non-UI extension point in ~50 lines. Here it is in full, built
+from scratch (only the plugin `name` differs from the shipped one):
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+// See "Typed commands" for the CommandPayloads augmentation that makes
+// editor.exec("highlight") a typed call in your own project.
+const myHighlight = definePlugin({
+  name: "my-highlight",
+
+  // 1. The command: toggle <mark> at the selection. ctx.dom.toggleInlineTag
+  //    is the generalized inline-wrap machinery (the same code path as inline
+  //    code) — no execCommand, no hand-rolled ranges.
+  commands: {
+    highlight: {
+      run: (ctx) => ctx.dom.toggleInlineTag("mark"),
+      isActive: (ctx) => ctx.dom.isInlineTagActive("mark"),
+    },
+  },
+
+  // 2. The input rule: typing the closing "==" wraps the inner text.
+  //    Inline triggers must be $-anchored; match[1] is the wrapped text.
+  inputRules: [
+    { kind: "inline", trigger: /==([^=\n]+)==$/, apply: "mark" },
+  ],
+
+  // 3. The keybinding: plugin bindings (priority 100) run before core (0).
+  keymap: {
+    "Mod-Shift-h": "highlight",
+  },
+
+  // 4. The toolbar button: highlight state defaults to the command's isActive.
+  toolbarItems: [
+    { id: "highlight", label: "H", title: "Highlight  (⌘⇧H)", command: "highlight" },
+  ],
+
+  // 5. The PAIRED markdown extension: the marked tokenizer that READS ==…==
+  //    ships in the same object as the turndown rule that WRITES it back.
+  markdown: {
+    marked: [{
+      extensions: [{
+        name: "highlight",
+        level: "inline",
+        start: (src: string) => src.indexOf("=="),
+        tokenizer(src: string) {
+          const m = /^==([^=\n]+)==/.exec(src);
+          if (!m) return undefined;
+          return {
+            type: "highlight",
+            raw: m[0],
+            text: m[1],
+            tokens: this.lexer.inlineTokens(m[1]),
+          };
+        },
+        renderer(token) {
+          return `<mark>${this.parser.parseInline(token.tokens ?? [])}</mark>`;
+        },
+      }],
+    }],
+    turndown: (td) => {
+      td.addRule("highlight", {
+        filter: "mark",
+        replacement: (content) => `==${content}==`,
+      });
+    },
+  },
+  // <mark> is already in the sanitizer allow-list; a tag that isn't would
+  // need: sanitize: { tags: ["mark"] }
+});
+
+// Loading stored markdown renders the mark; serialising writes it back —
+// byte for byte.
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "some ==highlighted== words",
+  plugins: [myHighlight],
+});
+assert.ok(editor.getHTML().includes("<mark>highlighted</mark>"));
+assert.equal(editor.getMarkdown(), "some ==highlighted== words");
+editor.destroy();
+```
+
+### Watch the input rule fire (and what the runner does for you)
+
+Input rules run on the `input` event. The runner (`src/core/input-rules.ts`)
+owns the contentEditable gotchas so your rule never sees them — for an inline
+rule that means: after wrapping `match[1]` in the new element, the caret is
+parked **after a zero-width space (ZWSP) outside the mark**. Without it,
+Chrome keeps typing *inside* the fresh `<mark>` forever. The ZWSP is editor
+furniture: it is stripped by the serializer (and the clipboard flavours), so
+it never reaches your Markdown.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "placeholder", plugins: [highlight()] });
+
+// Simulate having just typed "watch ==this==": put the text in the block,
+// the caret at the end, and fire `input` (what the browser does after a
+// keystroke).
+const p = editor.content.querySelector("p")!;
+p.textContent = "watch ==this==";
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+// The rule fired, and the runner parked the caret after a ZWSP outside the
+// new mark…
+assert.ok(editor.getHTML().includes("<mark>this</mark>"));
+assert.ok(editor.getHTML().includes("\u200b"));
+// …which the serializer strips: the Markdown is clean.
+assert.equal(editor.getMarkdown(), "watch ==this==");
+editor.destroy();
+```
+
+### The keybinding and the command, live
+
+Keybinding syntax is `[Mod-|Ctrl-|Alt-|Shift-]*Key`, where `Mod` is ⌘ on
+macOS and Ctrl elsewhere. A binding is either a command name or a handler
+`(ctx, event) => boolean` — return `true` to consume the event. `definePlugin`
+validates key strings upfront (unknown modifiers throw).
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+
+// jsdom lacks Range.getClientRects — stub it once for selection-based tests
+// (see "Testing your plugin" below). Real browsers never need this.
+if (typeof Range.prototype.getClientRects !== "function") {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "glow up", plugins: [highlight()] });
+
+// Focus FIRST, then select (jsdom's focus() resets a selection made before).
+editor.focus();
+const p = editor.content.querySelector("p")!;
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+sel.removeAllRanges();
+sel.addRange(r);
+
+// Mod-Shift-H → the plugin's binding → exec("highlight") → <mark>.
+editor.content.dispatchEvent(
+  new KeyboardEvent("keydown", { key: "h", metaKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+);
+assert.equal(editor.getMarkdown(), "==glow up==");
+
+// The command toggles: exec-ing it again (caret is inside the mark) unwraps.
+assert.equal(editor.exec("highlight"), true);
+assert.equal(editor.getMarkdown(), "glow up");
+editor.destroy();
+```
+
+### Prove the round-trip
+
+If your plugin touches Markdown syntax, this test is not optional — it is the
+plugin contract's teeth (details in
+[the round-trip contract](#the-round-trip-contract)):
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { highlight } from "edodo-write/plugins";
+
+// The exact parse/serialize codec an editor with these plugins would use.
+const codec = createCodec([highlight()]);
+assertRoundTrip(codec, "some ==highlighted== words"); // throws on divergence
+assert.ok(codec.parse("==hi==").includes("<mark>hi</mark>"));
+assert.equal(codec.serialize("<p><mark>hi</mark></p>"), "==hi==");
+```
+
+## Typed commands
+
+Command names live in the `CommandPayloads` interface. Because it is an
+interface (not a closed union), plugins extend it with TypeScript **module
+augmentation**, and their commands become first-class citizens of
+`editor.exec` / `ctx.exec`:
+
+```ts no-run
+import { definePlugin } from "edodo-write";
+
+declare module "edodo-write" {
+  interface CommandPayloads {
+    highlight: void;                 // no payload
+    myEmbed: { url: string };        // payload required
+  }
+}
+
+export const myEmbed = definePlugin({
+  name: "my-embed",
+  commands: {
+    myEmbed: {
+      run: (ctx, payload: { url: string }) => {
+        // …insert the embed at the caret…
+        void ctx; void payload;
+      },
+    },
+  },
+});
+
+// Now, in any file that sees the augmentation:
+//   editor.exec("myEmbed", { url: "https://…" })  — fully typed
+//   editor.exec("myEmbed")                        — compile error (payload missing)
+//   editor.exec("highlight")                      — ok (void payload = no argument)
+```
+
+The mechanics, and their edges:
+
+- **`PayloadArgs`** makes the payload argument *required exactly when the
+  declared payload isn't `void`*. `exec("bold")` takes no second argument;
+  `exec("link", { href })` demands one.
+- **`AnyCommand` is the escape hatch** for dynamic dispatch and plain JS: it
+  autocompletes declared names but admits any string, with the payload typed
+  `unknown`. Plain-JS plugin authors lose nothing.
+- **Augmentation can fail silently.** Under unusual `moduleResolution`
+  settings (or when the augmented module specifier doesn't match how you
+  import the package), TypeScript quietly ignores the `declare module` block
+  and your command name falls back to the `AnyCommand` string case — no error,
+  just weaker types. The runtime is the backstop: executing a name that was
+  never *registered* warns in the console and returns `false`; it never
+  throws.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "hello" });
+
+// The runtime backstop: unknown commands warn and return false — never throw.
+const warnings: string[] = [];
+const origWarn = console.warn;
+console.warn = (msg: string) => { warnings.push(String(msg)); };
+const result = editor.exec("not-a-command");
+console.warn = origWarn;
+
+assert.equal(result, false);
+assert.ok(warnings.some((w) => w.includes('unknown command "not-a-command"')));
+assert.equal(editor.getMarkdown(), "hello");
+editor.destroy();
+```
+
+Note that registration itself is untyped on purpose — `commands` accepts any
+string key (validated at runtime, collisions throw), so a JS-only plugin works
+identically; the augmentation only adds compile-time safety for callers.
+
+## Block plugins: callout
+
+Inline marks wrap a range; **block plugins restructure the caret's block**.
+The shipped example is `src/plugins/callout.ts` — Notion-style callouts stored
+as GitHub alert syntax, chosen precisely because it degrades to a plain
+blockquote everywhere else (see [the degradation story](#the-degradation-story)):
+
+```markdown
+> [!NOTE]
+> Useful information users should know.
+```
+
+In the editor a callout is `<blockquote data-callout="note">…</blockquote>`.
+The pieces, from the real source:
+
+```ts no-run
+// The block command: manual DOM via ctx.dom — never execCommand for block
+// structure (execCommand block ops are silently dropped inside `input`
+// events, exactly where input rules run).
+const calloutCommand = {
+  run: (ctx, payload?: { kind?: string }) => {
+    const block = ctx.dom.currentBlock();
+    if (!block) return false;                    // refuse → exec returns false
+    const kind = payload?.kind ?? "note";
+    if (block.tagName === "BLOCKQUOTE") {        // already a quote: upgrade
+      block.setAttribute("data-callout", kind);
+      return;
+    }
+    const bq = document.createElement("blockquote");
+    bq.setAttribute("data-callout", kind);
+    while (block.firstChild) bq.appendChild(block.firstChild);
+    ctx.dom.ensureNotEmpty(bq);                  // empty block = unplaceable caret
+    block.replaceWith(bq);
+    ctx.dom.placeCaretAtEnd(bq);
+  },
+  isActive: (ctx) => !!ctx.dom.currentBlock()?.hasAttribute("data-callout"),
+};
+
+// The within-scoped input rule: `> ` already became a blockquote (core rule);
+// typing `[!note] ` INSIDE one upgrades it. `within` scopes the rule to
+// blockquotes (the default is plain paragraphs).
+const calloutRule = {
+  kind: "block",
+  within: ["BLOCKQUOTE"],
+  trigger: /^\[!(note|tip|important|warning|caution)\] $/i,
+  apply: (ctx, match, block) => {
+    block.setAttribute("data-callout", match[1].toLowerCase());
+    ctx.dom.deleteLeadingChars(block, match[0].length);
+    return true;                                 // "I changed the document"
+  },
+};
+
+// Slash items carry payloads to one command — one command, many entries.
+const calloutSlashItems = [
+  { id: "callout-note", title: "Callout", group: "Media", command: "callout", payload: { kind: "note" } },
+  { id: "callout-warning", title: "Warning callout", group: "Media", command: "callout", payload: { kind: "warning" } },
+];
+
+// The parsed HTML carries data-callout — widen the sanitizer for it.
+// Widening is ADDITIVE only: the denial floor (scripts, iframes, event
+// handlers, script-scheme URLs) is not negotiable.
+const calloutSanitize = { attributes: { blockquote: ["data-callout"] } };
+```
+
+The full file adds the paired marked renderer + turndown rule (the same
+pairing discipline as highlight). Now the plugin in action:
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { callout } from "edodo-write/plugins";
+
+// Stored GitHub-alert markdown hydrates into a decorated block…
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "> [!NOTE]\n> Useful information.",
+  plugins: [callout()],
+});
+assert.ok(editor.getHTML().includes('data-callout="note"'));
+assert.ok(!editor.getHTML().includes("[!NOTE]")); // the marker is structure, not text
+assert.equal(editor.getMarkdown(), "> [!NOTE]\n> Useful information.");
+editor.destroy();
+
+// …and the command converts the CARET block (payload picks the kind).
+const host2 = document.createElement("div");
+document.body.appendChild(host2);
+const editor2 = new EdodoWrite(host2, { value: "Ship it", plugins: [callout()] });
+const p = editor2.content.querySelector("p")!;
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+editor2.exec("callout", { kind: "warning" }); // typed via the plugin's augmentation
+assert.equal(editor2.getMarkdown(), "> [!WARNING]\n> Ship it");
+editor2.destroy();
+```
+
+The `within`-scoped rule, firing as you type inside a quote:
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { callout } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "> plain quote", plugins: [callout()] });
+
+// Simulate having typed "[!warning] " at the start of the blockquote.
+const bq = editor.content.querySelector("blockquote")!;
+bq.textContent = "[!warning] plain quote";
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.setStart(bq.firstChild!, "[!warning] ".length);
+r.collapse(true);
+sel.removeAllRanges();
+sel.addRange(r);
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+assert.equal(editor.getMarkdown(), "> [!WARNING]\n> plain quote");
+editor.destroy();
+```
+
+Two orderings in that rule are load-bearing, and both come from the engine's
+hard-won invariants:
+
+- **Convert before strip.** A rule must transform the still-non-empty block
+  *first*, then delete the trigger text (commands no-op on empty blocks).
+  Rules with `apply: "commandName"` inherit the whole
+  convert → strip → re-anchor sequence — plus a single `transact()` around it
+  so no half-done state hits undo history. Only function-`apply` rules manage
+  the order themselves.
+- **`ctx.dom.deleteLeadingChars` is checkbox-safe.** It anchors the deletion
+  range to the first *text* node, never `(block, 0)`, so a leading task-list
+  checkbox is never swept into a trigger deletion.
+
+### The degradation story
+
+This is the **required degradation policy for all plugin syntax**: a document
+written with your plugin must stay valid, lossless Markdown for editors (and
+renderers, and LLMs) that don't have it. GitHub alert syntax passes: without
+the callout plugin, `> [!NOTE]` is just a blockquote whose first line reads
+`[!NOTE]` — visible text, zero data loss. Design your syntax so that the
+un-plugged reading is acceptable; if losing the plugin would destroy content
+or produce garbage, choose a different mapping (this is why edodo-write maps
+callouts to blockquotes and rejects syntaxes with no plain-Markdown form).
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec } from "edodo-write/testing";
+import { callout } from "edodo-write/plugins";
+
+const md = "> [!NOTE]\n> Useful information.";
+
+// An editor WITHOUT the plugin: the callout renders as an ordinary
+// blockquote, the marker as visible text — valid GFM, nothing lost.
+const plain = createCodec([]);
+const degradedHtml = plain.parse(md);
+assert.ok(degradedHtml.includes("<blockquote>"));
+assert.ok(degradedHtml.includes("[!NOTE]"));
+assert.ok(!degradedHtml.includes("data-callout"));
+
+// If that plugin-less editor re-saves, the marker text survives (turndown
+// escapes the brackets, as it does for any literal ones)…
+const resaved = plain.serialize(degradedHtml);
+assert.equal(resaved, "> \\[!NOTE\\] Useful information.");
+
+// …and an editor WITH the plugin re-hydrates even the escaped form back into
+// a decorated callout, and normalises it to canonical syntax on save.
+const decorated = createCodec([callout()]);
+const rehydrated = decorated.parse(resaved);
+assert.ok(rehydrated.includes('data-callout="note"'));
+assert.equal(decorated.serialize(rehydrated), md);
+```
+
+## Widget plugins (source-carrying blocks)
+
+Some blocks are not editable text at all — a rendered diagram, a display
+equation, a media embed. The shared machinery in `src/plugins/widget.ts`
+(exported from `edodo-write/plugins`) implements them as
+`<figure data-widget="<kind>" data-source="…">`: the **source lives in the
+`data-source` attribute**, which is the single thing your turndown rule
+serializes back to Markdown — so the rendered view can be anything (SVG,
+iframe, card) without ever touching the round-trip.
+
+| Helper | What it does |
+|---|---|
+| `createWidget(kind, source)` | Build the figure for insertion: `contenteditable="false"`, with a dedicated render surface as its only child. |
+| `mountWidgets(ctx, spec)` | Reconcile all figures of `spec.kind` under the root: (re)render any whose source changed since the last pass, skip the rest (tracked via `data-rendered`). Idempotent and cheap — call it from `setup` **and** `on.change`. `spec.render` may be async; a rejection renders a readable error box instead of breaking the editor. |
+| `wireWidgetEditing(ctx, spec)` | Click-to-edit: by default a source-textarea popover with Save/Cancel (saving is one transaction + a re-render); pass `edit: false` to disable or a custom handler. Returns the cleanup — return it from `setup`. |
+| `escapeAttr(value)` | HTML-escape a source string for embedding in a `data-` attribute from a marked renderer (newlines survive attribute round-trips). |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createWidget } from "edodo-write/plugins";
+
+const figure = createWidget("my-widget", "raw source");
+assert.equal(figure.tagName, "FIGURE");
+assert.equal(figure.getAttribute("data-widget"), "my-widget");
+assert.equal(figure.getAttribute("data-source"), "raw source");
+assert.equal(figure.getAttribute("contenteditable"), "false");
+```
+
+The engine already treats `FIGURE` as a first-class block: Enter escapes to a
+paragraph below it, Backspace before it deletes it whole (one undoable step,
+Notion-style), drag reorders it, and the block menu hides *Turn into* for it.
+Your plugin contributes only the widget-specific parts:
+
+- the **paired markdown extension** — a marked renderer/tokenizer that emits
+  the figure (use `escapeAttr` for the attributes) and a turndown rule that
+  writes `data-source` back to your syntax;
+- a `sanitize` widening for the figure's tags/attributes **when the figure
+  comes from parsing** (`math()` and `diagrams()` declare
+  `{ tags: ["figure"], attributes: { figure: [...] } }`; `embeds()` needs
+  none because its figures are created by a DOM reconciliation pass, never by
+  the parser);
+- `setup` (mount + wire editing, return the cleanup) and `on.change`
+  (re-mount).
+
+One turndown trap the shipped plugins already solve: turndown routes "blank"
+nodes past the rule array entirely, and a widget that has not rendered yet
+**is** blank — a save landing in that window would silently drop the block.
+Either keep the figure non-blank from birth (the math approach: the surface
+carries the source as text until the render replaces it) or shim the
+serializer's blank rule for your figures (the diagrams/embeds approach).
+
+Worked references, in reading order: `src/plugins/math.ts` (`$$` blocks — plus
+inline chips outside the figure machinery), `src/plugins/diagrams.ts` (fenced
+languages, per-language renderers), `src/plugins/embeds.ts` (widgets created
+by reconciliation instead of parsing). Their user-facing behaviour is
+documented in [First-party plugins](FIRST_PARTY_PLUGINS.md) — this section is
+about building your own.
+
+## The EditorContext reference
+
+Every plugin entry point — commands, rules, key handlers, menu items, `setup`,
+lifecycle hooks — receives the same `EditorContext`. It is bound to *this*
+editor instance (no root parameter to pass wrong on multi-editor pages).
+
+### `ctx.dom` — the caret-safe toolbox
+
+These helpers encode the contentEditable invariants (the full catalog, with
+the bug behind each rule, is in [DEVELOPMENT.md](DEVELOPMENT.md)). Use them
+instead of re-deriving caret math:
+
+| Helper | What it does — and which gotcha it encapsulates |
+|---|---|
+| `currentBlock()` / `currentListItem()` | The top-level block / `<li>` holding the caret. `null` when the selection is outside the editor. |
+| `blockKindOf(el)` | Tag → `BlockKind` (`"heading1"`, `"taskList"`, …). |
+| `textBeforeCaret(block)` | Text from block start to caret — **pre-normalized**: a typed trailing space arrives as `U+00A0` (NBSP) and is mapped to a plain space; ZWSP caret furniture is stripped. Your string comparisons never meet either. |
+| `isAtBlockStart(block)` | Caret at the block's visible start (ZWSP-aware). |
+| `deleteLeadingChars(block, n)` | Delete the first `n` characters — anchored to the first **text** node, so a leading task checkbox is never swept into the deletion. |
+| `ensureNotEmpty(el)` | Give an empty element a placeable caret (`<br>` anchor). An element with no children — or only empty text nodes — makes Chrome type into the *previous* block. |
+| `placeCaretAtStart/AtEnd/After` | Caret placement that respects the anchors above. |
+| `toggleInlineTag(tag)` / `isInlineTagActive(tag)` | The generalized inline-wrap machinery (what inline code and highlight use). |
+| `selectionRect()` | Viewport rect of the selection — for positioning UI. |
+
+### `ctx.exec`, `ctx.transact`, `ctx.markdown`, `ctx.ui`
+
+- **`exec(cmd, payload?)` acts on the CARET block** — commands find their
+  target through the selection, not through arguments. It returns `false`
+  when the command is unregistered (warns), refused (`run` returned `false`),
+  or the editor is read-only; otherwise `true`. Each `exec` runs inside a
+  transaction and commits (normalize → history → change event) on completion.
+- **`transact(fn)`** batches any number of DOM mutations — including nested
+  `exec` calls — into **one undo step and one change event**. It is
+  re-entrant: nested transactions commit once, at the outermost level. Any
+  listener your `setup` attaches must wrap its mutations in `transact`,
+  otherwise they are invisible to history and the `change` event.
+- **`ctx.markdown`** is *this editor's* pipeline — core GFM plus every plugin
+  extension in this instance: `parse(md)`, `serialize(html)`, and
+  `insert(md)` (parse and insert at the caret as real blocks, transactional).
+  Never reach for a global parser: two editors on one page can have different
+  codecs.
+- **`ctx.ui`** — see [Plugin UI](#plugin-ui).
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin, type EditorContext } from "edodo-write";
+
+// `setup` receives the ctx once after mount — captured here to demonstrate
+// the helpers directly.
+let ctx: EditorContext | null = null;
+const probe = definePlugin({ name: "probe", setup: (c) => { ctx = c; } });
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "one\n\ntwo", plugins: [probe] });
+editor.focus(); // jsdom: focus BEFORE placing carets (focus resets a selection)
+
+// textBeforeCaret hides the NBSP gotcha: the DOM holds "hello\u00a0"…
+const first = editor.content.querySelector("p")!;
+(first.firstChild as Text).data = "hello\u00a0";
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(first);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+assert.equal(ctx!.dom.textBeforeCaret(first), "hello "); // …you see a space
+assert.equal(ctx!.dom.currentBlock(), first);
+
+// exec acts on the CARET block: move the caret to the second paragraph.
+const second = editor.content.querySelectorAll("p")[1]!;
+ctx!.dom.placeCaretAtEnd(second);
+ctx!.exec("heading2");
+assert.equal(editor.getMarkdown(), "hello\n\n## two");
+
+// transact: two commands, ONE undo step.
+ctx!.transact(() => {
+  ctx!.exec("divider");
+  ctx!.exec("divider");
+});
+assert.equal(editor.getMarkdown(), "hello\n\n## two\n\n---\n\n---");
+editor.undo();
+assert.equal(editor.getMarkdown(), "hello\n\n## two");
+editor.destroy();
+```
+
+## Plugin UI
+
+`ctx.ui` is the **only sanctioned way to render plugin UI** — never append
+your own elements to `document.body`. Every floating surface needs the same
+safety properties, so they are implemented once (`src/core/ui.ts`):
+
+- `ui.popover({ anchor, placement?, render, onClose? })` — an anchored
+  floating panel. The editor handles: portal into a themed body-level layer
+  (never clipped by the editor's overflow), viewport clamping,
+  Escape/outside-click/scroll dismissal, one-popover-per-editor, and forced
+  teardown on `destroy()` / `setReadOnly(true)`. `render(container, close)`
+  builds the content with real DOM and may return a cleanup.
+- `ui.menu({ anchor, items })` — a keyboard-navigable list menu built on
+  `popover` (ArrowUp/Down, Enter, grouped headers, `danger` styling). Menus
+  that open under the resting pointer don't take hover highlight until the
+  mouse actually moves — don't rebuild that either.
+- `ui.notify(message)` — a transient toast ("Copied as Markdown").
+
+**Selection preservation** is the subtle part, and the UI layer does the heavy
+lifting: when a popover opens, the editor's selection `Range` is saved, and
+`mousedown` on the popover frame is prevented — clicking a button must not
+collapse the selection it is about to act on (form fields are exempt so they
+stay typeable). If your popover contains an input that steals focus, clone the
+selection range *before* opening and restore it before acting, as the worked
+example below does.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin, type EditorContext } from "edodo-write";
+
+let ctx: EditorContext | null = null;
+const probe = definePlugin({ name: "probe", setup: (c) => { ctx = c; } });
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "anchor me", plugins: [probe] });
+
+// Popovers portal into a body-level layer, not into the editor.
+const block = editor.content.querySelector("p")!;
+const handle = ctx!.ui.popover({
+  anchor: block,
+  placement: "below",
+  render(container, close) {
+    const btn = document.createElement("button");
+    btn.textContent = "Do it";
+    btn.addEventListener("click", () => close());
+    container.appendChild(btn);
+  },
+});
+assert.ok(document.body.querySelector(".ew-popover"));
+assert.ok(!editor.content.querySelector(".ew-popover"));
+handle.close();
+assert.equal(document.body.querySelector(".ew-popover"), null);
+
+// destroy() tears down any open popover — plugins never leak UI.
+ctx!.ui.popover({ anchor: block, render() {} });
+editor.destroy();
+assert.equal(document.body.querySelector(".ew-popover"), null);
+```
+
+A complete worked example — a slash item that opens a popover with a URL
+field, preserving the selection across the focus steal (jsdom cannot exercise
+focus/typing, so this one is shown, not run; the executable proof for
+first-party popover flows is `tests/e2e/features.spec.ts`, and for plugin
+slash/keybinding/toolbar flows `tests/e2e/plugins.spec.ts`):
+
+```ts no-run
+import { definePlugin } from "edodo-write";
+
+export const bookmark = definePlugin({
+  name: "bookmark",
+  slashItems: [{
+    id: "bookmark",
+    title: "Bookmark",
+    hint: "Link card from a URL",
+    keywords: ["link", "card", "url"],
+    group: "Embeds",
+    run(ctx) {
+      // The slash menu already removed the "/query" text and the caret sits
+      // in the (now empty) block. Save the range BEFORE the input steals
+      // focus, so we can act on it afterwards.
+      const saved = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
+      const anchor = ctx.dom.selectionRect() ?? ctx.dom.currentBlock()!;
+      ctx.ui.popover({
+        anchor,
+        placement: "below",
+        render(container, close) {
+          const input = document.createElement("input");
+          input.placeholder = "https://…";
+          const ok = document.createElement("button");
+          ok.textContent = "Insert";
+          ok.addEventListener("click", () => {
+            const url = input.value.trim();
+            close();
+            if (!url || !saved) return;
+            // Restore the selection the input stole, then mutate inside ONE
+            // transaction (one undo step, one change event).
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(saved);
+            ctx.transact(() => {
+              ctx.markdown.insert(`[${url}](${url})`);
+            });
+          });
+          container.append(input, ok);
+          setTimeout(() => input.focus(), 0);
+        },
+      });
+    },
+  }],
+});
+```
+
+## The round-trip contract
+
+Markdown is the single source of truth, so a plugin that changes what the
+editor *reads* must change what it *writes* — `markdown.marked` (parse) and
+`markdown.turndown` (serialize) ship in the same object because **a parse
+extension without its serialize twin is a round-trip bug by construction**.
+The formats are marked's and turndown's own, deliberately unwrapped: anything
+those ecosystems document works here.
+
+The failure mode is quiet and vicious: the document *renders* fine, then the
+first save re-serialises the view and your syntax is gone. `assertRoundTrip`
+(from `edodo-write/testing`) exists to make that loud — it checks
+parse → serialize returns the input byte-for-byte, **and** that a second pass
+is stable (idempotence):
+
+```ts
+import { strict as assert } from "node:assert";
+import { definePlugin } from "edodo-write";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+
+// A parse-only extension: %%text%% → <ins>. Renders beautifully…
+const broken = definePlugin({
+  name: "ins-broken",
+  sanitize: { tags: ["ins"] },
+  markdown: {
+    marked: [{
+      extensions: [{
+        name: "inserted",
+        level: "inline" as const,
+        start: (src: string) => src.indexOf("%%"),
+        tokenizer(src: string) {
+          const m = /^%%([^%\n]+)%%/.exec(src);
+          if (!m) return undefined;
+          return { type: "inserted", raw: m[0], text: m[1] };
+        },
+        renderer(token: { text: string }) {
+          return `<ins>${token.text}</ins>`;
+        },
+      }],
+    }],
+    // …no turndown twin. The first save destroys the syntax.
+  },
+});
+
+const codec = createCodec([broken]);
+assert.ok(codec.parse("%%new%% words").includes("<ins>new</ins>"));
+assert.equal(codec.serialize(codec.parse("%%new%% words")), "new words"); // gone!
+assert.throws(() => assertRoundTrip(codec, "%%new%% words"), /Round-trip diverged/);
+```
+
+### The dev loop (testing your plugin)
+
+1. **Unit-test the codec first.** `createCodec([yourPlugin()])` builds the
+   exact pipeline an editor with your plugin uses — no DOM host, no editor.
+   `assertRoundTrip` every syntax form you support, plus the *interactions*
+   (your mark inside bold, inside a list item, inside a blockquote…). Also
+   round-trip a plain-GFM corpus through your codec to prove you broke nothing.
+2. **Test behavior in jsdom** the way this guide's examples do: construct an
+   editor, drive it through `exec`, dispatched `input`/`keydown` events, and
+   selection placement — and assert on `getMarkdown()` (the contract), not on
+   pixels. Two jsdom caveats: `document.execCommand` does not exist there, so
+   the built-in inline marks (`bold`/`italic`/`strike`) no-op — use commands
+   built on `ctx.dom` (like `toggleInlineTag`) or test those in a real
+   browser; and `Range.getClientRects` is missing, so anything that positions
+   UI from a selection needs the two-line stub shown earlier. Focus the
+   editor *before* creating a selection.
+3. **Prove UI flows in a real browser.** Keyboard events synthesized in jsdom
+   never exercise real caret movement, IME, or focus — the repo's Playwright
+   suite (`tests/e2e/plugins.spec.ts`) types `==text==` for real, presses the
+   real shortcut, clicks the real toolbar button. The e2e fixture accepts
+   `?plugins=highlight,callout`, so first-party plugin behavior is verified
+   end-to-end; follow that pattern for yours.
+
+## Recipes
+
+### Autolink on space
+
+An inline rule that turns a typed URL into a link when the space after it
+lands. Note the character class: **a typed trailing space reaches the DOM as
+`U+00A0` (NBSP)**. Block-rule text is pre-normalized for you, but inline rules
+match the raw text node — so match both. The runner still does the caret work:
+the new `<a>` gets the ZWSP park so you don't keep typing inside the link.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+const autolink = definePlugin({
+  name: "autolink",
+  inputRules: [{
+    kind: "inline",
+    trigger: /(https?:\/\/\S+)[ \u00a0]$/, // the trigger consumes the space
+    apply: (match) => {
+      const a = document.createElement("a");
+      a.href = match[1];
+      a.textContent = match[1];
+      return a;                              // a node factory, not a tag name
+    },
+  }],
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "placeholder", plugins: [autolink] });
+
+// Simulate the state right after typing "see https://example.com␣" —
+// with the NBSP the browser actually produces.
+const p = editor.content.querySelector("p")!;
+p.textContent = "see https://example.com\u00a0";
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+assert.ok(editor.getHTML().includes('<a href="https://example.com">'));
+assert.equal(editor.getMarkdown(), "see [https://example.com](https://example.com)");
+editor.destroy();
+```
+
+### Shadowing Mod-B
+
+Plugin keybindings (default priority 100) sort before the core preset's
+(priority 0), so registering the same key **shadows** the built-in. Return
+`true` to consume the event; return `false` and the next binding — eventually
+core's — still runs. The structural Enter/Backspace/Tab engine runs after all
+registered bindings regardless.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+let intercepted = 0;
+const noBold = definePlugin({
+  name: "no-bold",
+  keymap: {
+    "Mod-b": () => { intercepted += 1; return true; }, // consumed: core never sees it
+  },
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "hello", plugins: [noBold] });
+editor.content.dispatchEvent(
+  new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true }),
+);
+assert.equal(intercepted, 1);
+assert.equal(editor.getMarkdown(), "hello"); // nothing was bolded
+editor.destroy();
+```
+
+### A slash item in your own group
+
+Slash items are grouped under section headers (`group`, default `"Blocks"`);
+new group names simply appear in the menu. Items either point at a `command`
+(with an optional `payload`) or provide a `run` function, and can hide
+contextually via `when(ctx)`. Ids must be globally unique — a collision with
+any other plugin (or the core preset) throws at construction.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+// jsdom lacks Range.getClientRects — stub so the menu can position itself.
+if (typeof Range.prototype.getClientRects !== "function") {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+
+const embeds = definePlugin({
+  name: "embeds",
+  slashItems: [{
+    id: "embed-bookmark",
+    title: "Bookmark",
+    hint: "Link card",
+    keywords: ["link", "card"],
+    group: "Embeds",                 // a brand-new section header
+    command: "divider",              // stand-in; usually your own command
+  }],
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "placeholder", plugins: [embeds] });
+
+// Type "/book" in an empty-ish paragraph: the menu opens, filtered.
+editor.focus();
+const p = editor.content.querySelector("p")!;
+p.textContent = "/book";
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+const menu = document.querySelector(".ew-slash.is-visible")!;
+assert.ok(menu);                                   // the menu is open…
+assert.ok(menu.textContent!.includes("Embeds"));   // …with the custom group header
+assert.ok(menu.textContent!.includes("Bookmark")); // …and the item
+
+// Enter picks the highlighted item: the "/query" text is removed for you,
+// then the command runs.
+editor.content.dispatchEvent(
+  new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+);
+assert.equal(editor.getMarkdown(), "---");
+editor.destroy();
+```
+
+### Autosave on change
+
+`on.change` is declarative sugar over `editor.on("change", …)`, with the ctx
+supplied and guard-isolation applied. The `change` event is **debounced
+(~120 ms)** so a burst of typing is one save — await it in tests (never a
+fixed-time sleep in e2e; here the debounce is the thing being shown).
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite, definePlugin } from "edodo-write";
+
+const saves: string[] = [];
+const autosave = definePlugin({
+  name: "autosave",
+  on: {
+    change: (markdown) => { saves.push(markdown); },
+  },
+});
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "v1", plugins: [autosave] });
+
+editor.setMarkdown("v2");
+assert.equal(saves.length, 0);                       // not yet — debounced
+await new Promise((resolve) => setTimeout(resolve, 200));
+assert.deepEqual(saves, ["v2"]);
+editor.destroy();
+```
+
+### Removing core features
+
+`exclude` removes feature keys (command names / item ids) **from the core
+preset only** — the command, its input rules, keybindings, and menu items all
+go together; plugins are never affected by it.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "no tasks here", exclude: ["taskList"] });
+
+// The command is fully unregistered: exec warns and returns false.
+const origWarn = console.warn;
+console.warn = () => {};
+assert.equal(editor.exec("taskList"), false);
+console.warn = origWarn;
+
+// Everything else still exists:
+editor.focus();
+const p = editor.content.querySelector("p")!;
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.selectNodeContents(p);
+r.collapse(false);
+sel.removeAllRanges();
+sel.addRange(r);
+assert.equal(editor.exec("bulletList"), true);
+assert.equal(editor.getMarkdown(), "- no tasks here");
+editor.destroy();
+```
+
+## The never-do list
+
+- **Never use `execCommand` for block structure.** `formatBlock`,
+  `insertUnorderedList` and friends are silently dropped inside `input`
+  events — exactly where input rules run. Build blocks with manual DOM
+  through `ctx.dom` (every core block command does).
+- **Never hand-roll caret math.** `ctx.dom` exists because each helper
+  encodes a bug: NBSP text, ZWSP furniture, checkbox-first task items,
+  unplaceable empty blocks. Re-deriving any of these corrupts documents in
+  ways jsdom tests won't catch.
+- **Never assign user strings to `innerHTML`.** Menu labels, popover content,
+  anything: use `textContent` / `createElement`. (The registry UIs already
+  treat your `title`/`label`/`hint` as plain text — keep your own UI to the
+  same standard.)
+- **Never ship an unpaired markdown extension.** Parse without serialize eats
+  the syntax on first save; serialize without parse writes syntax the editor
+  can't read back. Pair them and prove it with `assertRoundTrip`.
+- **Never append UI to `document.body` yourself.** `ctx.ui` popovers get
+  theming, clamping, dismissal, selection preservation and destroy-teardown
+  for free; a raw appended div gets none and leaks on `destroy()`.
+- **Never mutate the document outside `transact` from your own listeners.**
+  Commands, rules and menu items are wrapped for you — but a listener you
+  attach in `setup` is not. Un-transacted mutations skip normalization, undo
+  history and the `change` event; wrap them.
+- **Never lower the sanitizer floor** — you can't (widening is additive and
+  the denial floor is enforced), but don't design syntax that needs scripts,
+  iframes or event handlers to render.
+
+When in doubt, read `src/core/preset.ts` — every built-in is written against
+the same API you have, and it is the reference implementation for taste.
+
+---
+
+# First-party plugins
+
+# First-party plugins
+
+Everything optional ships as a plugin. Each one is a **factory** exported from
+`edodo-write/plugins` — call it (with options where it takes them) and pass the
+result to the constructor. Each plugin lives in its own module, so bundlers
+drop the ones you don't use.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { highlight, callout, math, edodoDraw, tags, embeds } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "The ==full== set, one editor.",
+  plugins: [
+    highlight(),
+    callout(),
+    math(),
+    edodoDraw(),
+    tags({ source: () => [] }),
+    embeds(),
+  ],
+});
+assert.equal(editor.getMarkdown(), "The ==full== set, one editor.");
+editor.destroy();
+```
+
+| Plugin | What it adds | The Markdown it stores | Optional peer |
+|---|---|---|---|
+| [`highlight()`](#highlight) | `==text==` highlighting | `==text==` | — |
+| [`callout()`](#callout) | Notion-style callouts | `> [!NOTE]` (GitHub alerts) | — |
+| [`math()`](#math) | TeX equations, inline + block | `$x^2$` / `$$…$$` | `katex` |
+| [`diagrams()` / `edodoDraw()`](#diagrams-and-edododraw) | live diagram widgets | fenced code blocks | `edododraw` |
+| [`tags()`](#tags) | `#tag` / `@mention` chips from *your* source | plain GFM links / text | — |
+| [`emoji()`](#emoji) | `:shortcode:` ↔ glyph chips + `:` autocomplete (built-in map, or yours) | `:rocket:` (plain text) | — |
+| [`embeds()`](#embeds) | video / audio / bookmark embeds | a bare URL line | — |
+| [`footnote()`](#footnote) | `[^id]` references + definitions | `see[^1]` / `[^1]: note` | — |
+| [`file()`](#file) | file-attachment chips (+ optional unfurl) | `!file[name](url)` | — |
+| [`detailsToggle()`](#detailstoggle) | collapsible `<details>` blocks | `<details><summary>…</summary>…</details>` | — |
+
+Every syntax here obeys the project's **degradation contract**: a document
+written with a plugin stays valid, lossless Markdown in editors, renderers and
+LLMs that don't have it. Each section below states exactly what the un-plugged
+reading is. (The contract itself, and how to honour it in your own plugins, is
+in the [Plugin guide](PLUGIN_GUIDE.md).)
+
+Every `ts` code block on this page is executed by the test suite
+(`tests/docs-examples.test.ts`) — what you read is what runs.
+
+## highlight()
+
+`==text==` ↔ `<mark>`. Adds the `highlight` command, an input rule (the
+closing `==` converts as you type), a `Mod-Shift-H` keybinding, and a toolbar
+button. No options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "mark ==this== word", plugins: [highlight()] });
+assert.ok(editor.getHTML().includes("<mark>this</mark>"));
+assert.equal(editor.getMarkdown(), "mark ==this== word");
+editor.destroy();
+```
+
+**Degradation.** `==…==` is not CommonMark or GFM — it is an extension
+flavour (Obsidian et al.). Plain-GFM viewers show the literal `==` markers:
+visible, lossless text. Opt in knowing your Markdown consumers.
+
+This plugin doubles as the canonical source example — the
+[Plugin guide](PLUGIN_GUIDE.md#your-first-plugin-highlight) walks through its
+~50 lines extension point by extension point.
+
+## callout()
+
+Notion-style callout blocks stored as **GitHub alert syntax** — plain Markdown
+that GitHub renders natively:
+
+```markdown
+> [!NOTE]
+> Useful information users should know.
+```
+
+In the editor a callout is `<blockquote data-callout="note">`, styled with a
+coloured border and label. Five kinds: `note`, `tip`, `important`, `warning`,
+`caution`. Type `[!note] ` (any kind) at the start of a quote to upgrade it,
+use the slash items (*Callout*, *Warning callout* — under Media), or run the
+`callout` command with `{ kind?: "note" | "tip" | "important" | "warning" | "caution" }`.
+No options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { callout } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "> [!TIP]\n> Callouts are just GitHub alerts.",
+  plugins: [callout()],
+});
+assert.ok(editor.getHTML().includes('data-callout="tip"'));
+assert.equal(editor.getMarkdown(), "> [!TIP]\n> Callouts are just GitHub alerts.");
+editor.destroy();
+```
+
+**Degradation.** Without the plugin, `> [!NOTE]` is an ordinary blockquote
+whose first line reads `[!NOTE]` — visible text, zero data loss. An editor
+*with* the plugin re-hydrates even a re-saved, escaped form back into a
+decorated callout (proven in the
+[Plugin guide](PLUGIN_GUIDE.md#the-degradation-story)).
+
+## math()
+
+TeX math with GitHub-native syntax:
+
+- **Inline:** `$x^2$` — a non-editable chip in the editor
+  (`<span class="ew-math" data-math="…">`). The content never starts or ends
+  with whitespace, never contains `$` or a newline, and the closing `$` must
+  not be followed by a digit — so prose like *"costs $5 and $10 total"* is
+  never hijacked.
+- **Block:** `$$` lines around a (possibly multiline) body — a widget figure
+  (`figure[data-widget="math"][data-source]`). A one-line `$$E=mc^2$$`
+  normalises to the canonical multiline form on save.
+
+Typing the closing `$` converts inline math as you type (same edges as the
+parser). The slash menu gains **Math block** (under Advanced), which inserts a
+`$$` widget and opens its source editor. Click an inline chip to edit or
+**Remove** it (Remove unwraps to the bare TeX text, without `$` delimiters, so
+it won't re-hydrate); click a block widget for the shared source popover.
+
+### Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `render` | `(tex, el, displayMode) => void` | KaTeX if installed, else styled plain TeX | Custom renderer for chips (`displayMode: false`) and blocks (`true`). |
+
+Rendering resolves in this order: `options.render` → a lazy
+`import("katex")` (**optional peer dependency** — install it and rendering is
+automatic; also import `katex/dist/katex.min.css`) → styled plain TeX text.
+A throwing renderer falls back to plain TeX; rendering never touches the
+Markdown value.
+
+```ts no-run
+import { math } from "edodo-write/plugins";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
+// Explicit wiring — e.g. to pin the KaTeX version or set options. Without
+// options.render the plugin lazy-imports "katex" automatically when it is
+// installed, and falls back to styled plain TeX when it is not.
+const plugin = math({
+  render: (tex, el, displayMode) =>
+    katex.render(tex, el, { displayMode, throwOnError: false }),
+});
+```
+
+Both forms in a live editor — the TeX source lives in data attributes, and
+the Markdown round-trips byte-for-byte:
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { math } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "inline $x^2$ and\n\n$$\nE = mc^2\n$$",
+  plugins: [math()],
+});
+assert.ok(editor.getHTML().includes('data-math="x^2"'));      // the chip
+assert.ok(editor.getHTML().includes('data-widget="math"'));   // the block widget
+assert.equal(editor.getMarkdown(), "inline $x^2$ and\n\n$$\nE = mc^2\n$$");
+editor.destroy();
+```
+
+Currency safety and the degradation story:
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { math } from "edodo-write/plugins";
+
+const codec = createCodec([math()]);
+
+// Currency is never hijacked: no whitespace edges, and the closing $ must
+// not be followed by a digit.
+assert.ok(!codec.parse("costs $5 and $10 total").includes("data-math"));
+assertRoundTrip(codec, "costs $5 and $10 total");
+// A legitimate formula right next to currency still converts.
+assert.ok(codec.parse("pay $5 for $x^2$").includes('data-math="x^2"'));
+
+// Degradation: without the plugin the syntax is visible, lossless text —
+// and GitHub renders $…$ / $$…$$ natively anyway.
+const plain = createCodec([]);
+assert.ok(plain.parse("inline $x^2$ math").includes("$x^2$"));
+assertRoundTrip(plain, "inline $x^2$ math");
+```
+
+## diagrams() and edodoDraw()
+
+Fenced code blocks whose language has a registered renderer become live,
+non-editable diagram widgets
+(`figure[data-widget="diagram"][data-lang][data-source]`). Click a widget to
+edit its source (Save re-renders); a renderer error shows a readable error box,
+never a broken editor. **Every other fence is untouched** — ` ```js ` stays an
+ordinary code block (regression-pinned in the test suite).
+
+`diagrams({ renderers })` is the general form: you map fence languages to
+renderers.
+
+| Option | Type | Description |
+|---|---|---|
+| `renderers` | `Record<string, (source, el, ctx) => void \| Promise<void>>` | Fence language → renderer. May be async; render into `el`. |
+
+`edodoDraw({ languages? })` is `diagrams()` preconfigured for the
+[edodo-draw](https://github.com/vivmagarwal/edododraw) engine (**optional peer
+dependency**, lazy-imported on first render). The engine's native language is
+the EDD text-to-diagram DSL, and it imports raw Mermaid through the DSL — so
+one renderer serves both ` ```edd ` and ` ```mermaid ` fences (the default
+`languages: ["edd", "mermaid"]`).
+
+Both factories register the `diagram` command
+(`{ lang: string; source?: string }`) and one slash item per language
+(*Diagram*, *Mermaid diagram* — under Media; picking one inserts a starter and
+opens the source editor). Because they share the command, **installing both
+throws at construction** — pick one and give it all your languages.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { diagrams } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "```pipeline\nbuild -> test -> ship\n```",
+  plugins: [diagrams({
+    renderers: {
+      pipeline: (source, el) => {
+        const div = document.createElement("div");
+        div.textContent = `rendered: ${source}`;
+        el.appendChild(div);
+      },
+    },
+  })],
+});
+
+// The fence parsed into a source-carrying widget…
+const figure = editor.content.querySelector('figure[data-widget="diagram"]')!;
+assert.equal(figure.getAttribute("data-lang"), "pipeline");
+assert.equal(figure.getAttribute("data-source"), "build -> test -> ship");
+
+// …the renderer mounts through a microtask — let it settle…
+await new Promise((r) => setTimeout(r, 0));
+assert.ok(editor.content.textContent!.includes("rendered: build -> test -> ship"));
+
+// …and the Markdown is still exactly the fence.
+assert.equal(editor.getMarkdown(), "```pipeline\nbuild -> test -> ship\n```");
+editor.destroy();
+```
+
+Unregistered languages fall through, and the codec needs no engine at all —
+rendering never touches the round-trip:
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { diagrams, edodoDraw } from "edodo-write/plugins";
+
+const codec = createCodec([diagrams({ renderers: { pipeline: () => {} } })]);
+assert.ok(codec.parse("```pipeline\na -> b\n```").includes('data-widget="diagram"'));
+assert.ok(codec.parse("```js\nconst a = 1;\n```").includes("<pre>")); // untouched
+assertRoundTrip(codec, "```pipeline\na -> b\n```");
+assertRoundTrip(codec, "```js\nconst a = 1;\n```");
+
+// edodoDraw: both default languages round-trip; `languages` narrows the set.
+const draw = createCodec([edodoDraw()]);
+assertRoundTrip(draw, "```edd\nscene { a[Start] --> b[Finish] }\n```");
+assertRoundTrip(draw, "```mermaid\nflowchart LR\n  a --> b\n```");
+const eddOnly = createCodec([edodoDraw({ languages: ["edd"] })]);
+assert.ok(eddOnly.parse("```mermaid\nflowchart LR\n```").includes("<pre>"));
+```
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { diagrams, edodoDraw } from "edodo-write/plugins";
+
+// Both factories register the `diagram` command — installing both throws at
+// construction (deliberate). Pick one and give it all your languages.
+const host = document.createElement("div");
+document.body.appendChild(host);
+assert.throws(
+  () => new EdodoWrite(host, {
+    plugins: [diagrams({ renderers: { d2: () => {} } }), edodoDraw()],
+  }),
+  /command "diagram" registered by both/,
+);
+```
+
+Wiring another engine is just a renderer:
+
+```ts no-run
+import { diagrams } from "edodo-write/plugins";
+import mermaid from "mermaid";
+
+// Bring your own Mermaid (instead of edodoDraw()'s bundled route):
+const plugin = diagrams({
+  renderers: {
+    mermaid: async (source, el) => {
+      const { svg } = await mermaid.render(`d${Date.now()}`, source);
+      el.innerHTML = svg;
+    },
+  },
+});
+```
+
+**Degradation.** A diagram fence is an ordinary, lossless GFM code block in
+any plugin-less editor — and GitHub renders ` ```mermaid ` fences natively.
+
+## tags()
+
+A source-configurable tagging / mention system. Type the trigger (`#` by
+default — pass `trigger: "@"` for mentions) mid-line or at a block start and a
+suggestion menu opens, fed by **your** `source` function: wire it to your
+database, an API, or a static list. The source *is* the configurability.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `trigger` | `string` | `"#"` | The character that opens the menu. |
+| `source` | `(query) => TagItem[] \| Promise<TagItem[]>` | — (required) | Suggestions for the typed query. Sync or async; stale async results are discarded (race-safe). |
+| `href` | `(item) => string \| null` | — | Derive an href for items without one (`null` → plain-text tag). |
+| `allowCreate` | `boolean` | `true` | Offer *Create #query* when nothing matches. |
+
+A `TagItem` is `{ label, href?, hint?, id? }`. Arrow keys navigate, Enter or
+click picks, Escape closes; the menu never opens inside code blocks and is
+IME-safe. To run several instances together (`#` tags plus `@` mentions), give each a distinct `name`: `tags({ name: "mentions", trigger: "@", source })`.
+
+The Markdown form is **pure GFM — zero new syntax**, which is the whole
+degradation story:
+
+- an item *with* an href becomes a standard link whose text is
+  trigger + label: `[#alpha](https://example.com/tags/alpha)` — a link stays
+  a link everywhere;
+- an item *without* one becomes plain text: `#gamma` — text stays text.
+
+In the editor, any link whose text starts with the trigger is chip-styled
+(`.ew-tag`) — visual furniture only, never serialized.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { tags } from "edodo-write/plugins";
+
+// jsdom lacks Range.getClientRects — stub so the menu can anchor itself.
+if (typeof Range.prototype.getClientRects !== "function") {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "placeholder",
+  plugins: [tags({
+    source: (query: string) => [
+      { label: "alpha", href: "https://example.com/tags/alpha" },
+      { label: "gamma" }, // no href → inserts plain text
+    ].filter((t) => t.label.startsWith(query.toLowerCase())),
+  })],
+});
+
+// Simulate having typed "#al": set the text, park the caret at the end of
+// the text node (where real typing leaves it), fire `input`.
+editor.focus();
+const p = editor.content.querySelector("p")!;
+p.textContent = "#al";
+const node = p.firstChild as Text;
+const sel = window.getSelection()!;
+const r = document.createRange();
+r.setStart(node, node.length);
+r.collapse(true);
+sel.removeAllRanges();
+sel.addRange(r);
+editor.content.dispatchEvent(new Event("input", { bubbles: true }));
+
+// The suggestion menu is open; Enter picks the highlighted entry.
+assert.ok(document.querySelector(".ew-popover.ew-menu")!.textContent!.includes("#alpha"));
+editor.content.dispatchEvent(
+  new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+);
+
+// A linked item is a chip in the editor — and a PLAIN GFM link in the value.
+assert.ok(editor.getHTML().includes('class="ew-tag"'));
+assert.equal(editor.getMarkdown(), "[#alpha](https://example.com/tags/alpha)");
+editor.destroy();
+```
+
+Stored documents hydrate the chips back, and the round-trip is byte-stable —
+there is no markdown extension to pair, because there is no new syntax:
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { tags } from "edodo-write/plugins";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "tagged [#alpha](https://example.com/tags/alpha) and #gamma mid-line",
+  plugins: [tags({ source: () => [] })],
+});
+assert.ok(editor.getHTML().includes('class="ew-tag"')); // chip styling, editor-only
+assert.equal(
+  editor.getMarkdown(),
+  "tagged [#alpha](https://example.com/tags/alpha) and #gamma mid-line",
+);
+editor.destroy();
+
+const codec = createCodec([tags({ source: () => [] })]);
+assertRoundTrip(codec, "[#alpha](https://example.com/tags/alpha)");
+assertRoundTrip(codec, "#gamma");
+```
+
+An async source (an API call) works the same — return a promise from
+`source`; out-of-order responses are discarded by sequence number, and
+`href` centralises link derivation:
+
+```ts no-run
+import { tags } from "edodo-write/plugins";
+
+const mentions = tags({
+  trigger: "@",
+  source: async (query) => {
+    const res = await fetch(`/api/users?q=${encodeURIComponent(query)}`);
+    return res.json(); // [{ label: "ada", hint: "Ada Lovelace" }, …]
+  },
+  href: (item) => `https://example.com/u/${item.label}`,
+  allowCreate: false,
+});
+```
+
+### Custom-token (mention) seam
+
+By default a picked item is stored as **pure GFM** (a link, or plain text). But a
+host that needs a *stable, first-class mention* — one that survives a display
+rename, relabels a deleted account, and never collides with a real URL — can opt
+into **TOKEN MODE** by supplying **both** `serialize` and `parse`. The plugin
+then stores a custom token you define (EDodo uses `@[Display](id)`) and registers
+the paired marked tokenizer + turndown rule + sanitiser allowances so it
+round-trips byte-stable. Omit the pair and everything below is inert — the plugin
+is exactly its historical GFM self.
+
+| Option | Type | Description |
+|---|---|---|
+| `serialize` | `(item: TagTokenItem) => string` | `{ id, display }` → the stored token (no trailing space — the engine adds it). |
+| `parse.pattern` | `RegExp` | The token grammar (global), e.g. `/@\[([^\]]+)\]\(([^)\s]+)\)/g`. Shared with your own extractors. |
+| `parse.toItem` | `(m: RegExpExecArray) => TagTokenItem` | Capture groups → `{ id, display }`. |
+| `render` | `(item, resolve?) => Node` | Build the chip node (defaults to `span.ew-mention[contenteditable=false]`). |
+| `resolveMention` | `(id, frozenDisplay) => { display } \| null` | Relabel at RENDER time only; return `null` to keep the frozen display. |
+| `allowBroadcast` | `{ id, display }` | A synthetic entry (e.g. `@channel`) that leads the menu for an empty/matching query. |
+
+The item shape is `TagTokenItem = { id, display, subtitle?, avatar?, color? }` — a
+frozen `display` plus a stable `id`. `TagItem` (your `source` rows) is widened
+with the same optional `id` / `display`, so a token-mode source returns rows
+carrying both. `ResolveMention` is `(id: string, fallbackDisplay: string) => { display: string } | null`.
+
+**Menu-pick emits the token.** In token mode, picking a suggestion from the
+autocomplete menu inserts the mention chip directly (built by the same
+`render`/default builder as a loaded token), so it serializes to exactly
+`serialize(item)` — newly-composed mentions are stored as tokens, not GFM links.
+When `allowBroadcast` is set, its entry leads the menu and picks to the broadcast
+token.
+
+```ts
+import { strict as assert } from "node:assert";
+import { tags } from "edodo-write/plugins";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+
+// Supply BOTH serialize + parse to switch the plugin into TOKEN MODE.
+const mentions = tags({
+  name: "mentions",
+  trigger: "@",
+  source: () => [],                          // your user directory (async is fine)
+  allowBroadcast: { id: "@channel", display: "channel" },
+  serialize: (item) => `@[${item.display}](${item.id})`,
+  parse: {
+    pattern: /@\[([^\]]+)\]\(([^)\s]+)\)/g,
+    toItem: (m) => ({ display: m[1], id: m[2] }),
+  },
+  // Relabel a stored mention at RENDER time — the token is never rewritten.
+  resolveMention: (id) => (id === "u_ghost" ? { display: "Deleted user" } : null),
+});
+
+const codec = createCodec([mentions]);
+
+// The stored token round-trips byte-stable, @channel broadcast included.
+assertRoundTrip(codec, "hi @[Alice](u_1) and @[channel](@channel)");
+
+// It renders a contenteditable chip carrying the FROZEN display + id.
+const html = codec.parse("hi @[Alice](u_1)");
+assert.ok(html.includes('class="ew-mention"'));
+assert.ok(html.includes('data-mention-id="u_1"'));
+assert.ok(html.includes(">@Alice<"));
+
+// A deleted account is relabelled on screen, but the token stays original.
+const ghost = codec.parse("bye @[Alice](u_ghost)");
+assert.ok(ghost.includes(">@Deleted user<"));               // visible relabel
+assert.ok(ghost.includes('data-mention-display="Alice"'));  // frozen token intact
+assert.equal(codec.serialize(ghost), "bye @[Alice](u_ghost)"); // → the ORIGINAL
+```
+
+## emoji()
+
+`:shortcode:` ↔ a glyph chip, plus a Slack-style suggestion menu: typing `:`
+followed by **two or more** characters opens a filtered shortcode list —
+↑/↓ navigate, Enter/Tab/click insert, Escape dismisses. The menu never opens
+inside code blocks or mid-word (`12:30` stays quiet), and it uses the same
+popover machinery as the tags() mention menu.
+
+The stored form is the shortcode itself (`:rocket:`), so the Markdown stays
+lossless plain text. The visible node is the glyph, but a paired
+marked + turndown extension keeps the shortcode on the chip
+(`data-shortcode`) so it round-trips byte-stable. An **unknown** shortcode is
+left completely alone (`:nope:` survives verbatim).
+
+Works with zero config: the default map is the built-in `defaultEmojiMap`, a
+curated set (~500 entries) of the most-used **gemoji-standard** names, so
+`:rocket:` means the same thing here, on GitHub, Slack and Discord. Hosts
+replace it wholesale or extend it — custom (host-specific) emoji are just
+extra keys.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `map` | `Record<string, string>` | `defaultEmojiMap` | shortcode → glyph (e.g. `{ rocket: "🚀" }`). Looked up lowercased. |
+| `trigger` | `string` | `":"` | Delimiter character. |
+| `autocomplete` | `boolean` | `true` | The `:query` suggestion menu (prefix matches rank first, then substring; 8 rows max). |
+| `storedForm` | `"shortcode" \| "unicode"` | `"shortcode"` | `"unicode"` serialises the bare glyph instead of `:name:`. |
+| `render` | `(glyph, code) => Node` | `span.ew-emoji` | Custom chip node for typed and stored emoji. |
+| `picker` | `boolean` | `true` | Reserved for the browse-all picker panel (contract accepted now). |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { emoji, defaultEmojiMap } from "edodo-write/plugins";
+
+// Zero config: the built-in gemoji-standard map.
+const zero = createCodec([emoji()]);
+assertRoundTrip(zero, "ship it :rocket: :+1: :tada:");
+assert.ok(defaultEmojiMap.rocket === "🚀");
+
+// Or bring your own map — extend the default with custom emoji.
+const codec = createCodec([emoji({ map: { ...defaultEmojiMap, shipit: "🐿️" } })]);
+
+// Known shortcodes become glyph chips that carry the shortcode…
+const html = codec.parse("ship it :shipit:");
+assert.ok(html.includes('class="ew-emoji"'));
+assert.ok(html.includes('data-shortcode="shipit"'));
+// …and round-trip byte-stable, while unknown codes and times survive verbatim.
+assertRoundTrip(codec, "ship it :rocket: 🎉");
+assertRoundTrip(codec, "nah :nope: at 12:30:45");
+```
+
+**Degradation.** Without the plugin, `:rocket:` is ordinary plain text —
+visible, lossless, and the widely-understood shortcode convention.
+
+## embeds()
+
+Notion-style media embeds whose Markdown form is **nothing but a bare URL
+line**:
+
+```markdown
+https://youtu.be/dQw4w9WgXcQ
+```
+
+A paragraph that is *only* a bare URL (a GFM autolink whose text equals its
+href, or plain typed text) becomes a media widget
+(`figure[data-widget="embed"][data-source]`) — unless the caret is inside it
+(the line you are still typing on is never yanked). What renders depends on
+the URL:
+
+| URL | Renders as |
+|---|---|
+| YouTube (`youtu.be/…`, `youtube.com/watch?v=…`, `/shorts/…`, `/embed/…`) | privacy-friendly iframe (`youtube-nocookie.com`) |
+| Vimeo (`vimeo.com/<id>`) | iframe (`player.vimeo.com`) |
+| `.mp4` / `.webm` / `.mov` | `<video controls>` |
+| `.mp3` / `.wav` / `.ogg` / `.m4a` | `<audio controls>` |
+| anything else | bookmark card — title/description via `fetchMetadata`, else the hostname |
+
+Clicking a widget opens **Open / Turn into link / Remove**. *Turn into link*
+replaces the widget with a written `[hostname](url)` link — text ≠ href, so
+the reconciliation pass never re-embeds it. That is also the authoring
+opt-out: **a deliberately written `[title](url)` link is never converted.**
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `fetchMetadata` | `(url) => Promise<{ title?, description?, image? }>` | domain-only cards | Bookmark-card metadata. A rejection falls back to the hostname. |
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+import { embeds } from "edodo-write/plugins";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, {
+  value: "https://youtu.be/dQw4w9WgXcQ",
+  plugins: [embeds()],
+});
+
+// The lone-URL paragraph hydrated into a widget figure…
+const figure = editor.content.querySelector('figure[data-widget="embed"]')!;
+assert.equal(figure.getAttribute("data-source"), "https://youtu.be/dQw4w9WgXcQ");
+// …and the Markdown is still exactly the bare URL line.
+assert.equal(editor.getMarkdown(), "https://youtu.be/dQw4w9WgXcQ");
+editor.destroy();
+
+// A written [title](url) link is NEVER converted — that is the opt-out.
+const host2 = document.createElement("div");
+document.body.appendChild(host2);
+const editor2 = new EdodoWrite(host2, {
+  value: "[watch this](https://youtu.be/dQw4w9WgXcQ)",
+  plugins: [embeds()],
+});
+assert.equal(editor2.content.querySelector("figure"), null);
+assert.equal(editor2.getMarkdown(), "[watch this](https://youtu.be/dQw4w9WgXcQ)");
+editor2.destroy();
+```
+
+Both editor states — the widget and a not-yet-hydrated autolink paragraph —
+serialize to the same bare line, so the round-trip is byte-stable in every
+state:
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { embeds } from "edodo-write/plugins";
+
+const codec = createCodec([embeds()]);
+assert.equal(
+  codec.serialize('<figure data-widget="embed" data-source="https://youtu.be/dQw4w9WgXcQ"></figure>'),
+  "https://youtu.be/dQw4w9WgXcQ",
+);
+assert.equal(
+  codec.serialize('<p><a href="https://youtu.be/dQw4w9WgXcQ">https://youtu.be/dQw4w9WgXcQ</a></p>'),
+  "https://youtu.be/dQw4w9WgXcQ",
+);
+assertRoundTrip(codec, "intro with a [real link](https://example.com/page)\n\nhttps://example.com/clip.mp4");
+
+// Degradation: without the plugin, a bare URL line is a GFM autolink — a
+// clickable link everywhere, zero data loss.
+const plain = createCodec([]);
+assert.ok(plain.parse("https://youtu.be/dQw4w9WgXcQ").includes("<a href="));
+```
+
+Richer bookmark cards come from your metadata endpoint:
+
+```ts no-run
+import { embeds } from "edodo-write/plugins";
+
+const plugin = embeds({
+  fetchMetadata: async (url) => {
+    const res = await fetch(`/api/unfurl?url=${encodeURIComponent(url)}`);
+    return res.json(); // { title, description, image }
+  },
+});
+```
+
+## footnote()
+
+Markdown footnotes: an inline `[^id]` reference plus a line-anchored
+`[^id]: text` definition. References are numbered by **definition order** while
+the stored `id` is preserved on the chip, so the round-trip is byte-stable. An
+inline ref renders as `sup.ew-fn-ref > a`; the definitions are collected into a
+trailing `section.ew-footnotes`. An unmatched `[^id]` ref is left as literal
+text. The `insertFootnote` command inserts a fresh ref/definition pair. No
+options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { footnote } from "edodo-write/plugins";
+
+const codec = createCodec([footnote()]);
+const html = codec.parse("see[^1]\n\n[^1]: the note");
+assert.ok(html.includes('class="ew-fn-ref"'));
+assert.ok(html.includes('class="ew-footnotes"'));
+assertRoundTrip(codec, "see[^1]\n\n[^1]: the note");
+```
+
+**Degradation.** `[^1]` / `[^1]: …` is the widely-supported (GFM-adjacent)
+footnote syntax — visible, lossless text in any plugin-less viewer, and
+rendered natively by GitHub.
+
+## file()
+
+File-attachment chips whose Markdown form is `!file[name](url)` (the name may
+be empty). In the editor each becomes a non-editable `a.ew-file` with
+`data-file-name` / `data-file-url` and a 📎 label; an optional
+`!unfurl[title](url)` sibling renders a link-preview row. The `insertFile`
+command (`{ name, url }`) inserts one, and a host `uploader` wires a slash
+item + file picker.
+
+| Option | Type | Description |
+|---|---|---|
+| `uploader` | `(file: File) => Promise<string \| { url, name? }>` | Upload handler behind the *Attach file* slash item. Without it the affordance is inert — the host drives insertion via `insertFile`. |
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { file } from "edodo-write/plugins";
+
+const codec = createCodec([file()]);
+const html = codec.parse("!file[report.pdf](https://example.com/r.pdf)");
+assert.ok(html.includes('class="ew-file"'));
+assertRoundTrip(codec, "!file[report.pdf](https://example.com/r.pdf)");
+assertRoundTrip(codec, "!file[](https://example.com/r.pdf)"); // empty name is fine
+```
+
+**Degradation.** Without the plugin, `!file[name](url)` is literal text (an
+image-like token that no renderer resolves) — visible and lossless; the URL is
+right there to click through.
+
+## detailsToggle()
+
+Collapsible sections stored as native `<details><summary>…</summary>…</details>`
+HTML. The summary renders inline Markdown and the body block Markdown, each
+re-serialised through a nested turndown so the round-trip is byte-stable.
+`data-md-open` maps to the native `open` attribute; `data-md-block` preserves a
+verbatim block form. The `insertDetailsBlock` command inserts a fresh toggle.
+No options.
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { detailsToggle } from "edodo-write/plugins";
+
+const codec = createCodec([detailsToggle()]);
+assertRoundTrip(codec, "<details><summary>Title</summary>content</details>");
+assertRoundTrip(codec, "<details data-md-open><summary>**S**</summary>body</details>");
+```
+
+**Degradation.** `<details>`/`<summary>` is raw HTML that Markdown passes
+through — GitHub and most renderers show a working, collapsible block with no
+plugin at all.
+
+## Optional peer dependencies
+
+Two plugins can use an engine when one is installed — and stay fully
+functional when it is not:
+
+| Package | Used by | Installed | Absent |
+|---|---|---|---|
+| `katex` (>= 0.16) | `math()` | Equations render automatically (lazy-imported on first use; also import `katex/dist/katex.min.css`). | Chips and blocks show styled plain TeX — readable, editable, lossless. |
+| `edododraw` (>= 0.1.4) | `edodoDraw()` | ` ```edd ` and ` ```mermaid ` fences render as live diagrams (lazy-imported on first render). | Widgets show a readable error box; the fence source is untouched and still round-trips. |
+
+Neither is imported at module load — only when something actually needs to
+render — so neither affects consumers who don't use these plugins.
+
+## Widget machinery (for plugin authors)
+
+`math()`, `diagrams()` and `embeds()` are built on shared widget machinery —
+`createWidget` / `mountWidgets` / `wireWidgetEditing` / `escapeAttr`, exported
+from `edodo-write/plugins` — and the engine treats their `<figure>` blocks as
+first-class citizens (Enter escapes below, Backspace before one deletes it
+whole, drag reorders). To build your own source-carrying block plugin, see
+[Widget plugins](PLUGIN_GUIDE.md#widget-plugins-source-carrying-blocks) in the
+Plugin guide.
+
+---
+
+# Embed in your app (API)
+
+# Embed in your app (API)
+
+Two layers: a framework-free `EdodoWrite` class (`edodo-write`) and a thin React
+wrapper (`edodo-write/react`). Both read and write Markdown as the source of
+truth. The stylesheet is shipped separately — `import "edodo-write/styles.css"`.
+First-party plugins live at `edodo-write/plugins`; round-trip test helpers at
+`edodo-write/testing`.
+
+## Core: `new EdodoWrite(host, options)`
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { highlight, callout } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "Some ==highlighted== words.",
+  plugins: [highlight(), callout()],
+  exclude: ["taskList"],
+});
+
+// Plugin markdown extensions are part of this editor's own pipeline.
+assert.equal(editor.getMarkdown(), "Some ==highlighted== words.");
+// Excluded core features are fully removed: exec warns and returns false.
+assert.equal(editor.exec("taskList"), false);
+editor.destroy();
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `value` | `string` | `""` | Initial Markdown. |
+| `placeholder` | `string` | `"Write something, or type “/” for commands…"` | Shown when the document is empty. |
+| `autofocus` | `boolean` | `false` | Focus after mount (ignored when read-only). |
+| `readOnly` | `boolean` | `false` | Render-only; no editing UI. Toggleable at runtime via `setReadOnly`. |
+| `toolbar` | `boolean \| "floating" \| "fixed" \| "none" \| { mode, items? }` | `"floating"` | The formatting toolbar. `"floating"` (also `true`) is the Medium-style selection bar; `"fixed"` docks a persistent Slack-style bar above the content that reflects the caret's formatting even with nothing selected; `"none"` (also `false`) shows neither. The object form also picks WHICH buttons appear, in order — e.g. `{ mode: "fixed", items: ["bold", "italic", "link"] }` (ids come from the toolbar registry: core preset + plugins; unknown ids are skipped). Switch at runtime with `setToolbar()`. |
+| `layout` | `"page" \| "fill"` | `"page"` | How the editor occupies its host. `"page"` is the document look: a centered column capped at `--ew-content-width` with a long bottom pad (clicking below the text appends). `"fill"` stretches to the host's full width **and height** (flex column, so a fixed toolbar docks on top) — the mode for embedded composers: comment boxes, chat inputs, form fields. Switch at runtime with `setLayout()`. |
+| `slashMenu` | `boolean` | `true` | `/` slash command menu. |
+| `spellcheck` | `boolean` | `true` | Native browser spellcheck. |
+| `className` | `string` | — | Extra class(es) on the host. |
+| `ariaLabel` | `string` | — | ARIA label for the editable region. |
+| `onChange` | `(md: string) => void` | — | Convenience `change` listener. |
+| `uploadImage` | `ImageUploader` | data-URL embed | Where pasted / dropped / picked image files go: `(file, editor) => Promise<url \| { src, alt? }>`; the resolved URL is what lands in the Markdown. Omitted, images embed as `data:` URLs. See **[Image hosting](IMAGE_HOSTING.md)**. |
+| `plugins` | `EdodoPlugin[]` | `[]` | Plugins, applied in order after the core preset. Resolved **once at construction** — create a new editor to change the set. Name/command/item-id collisions throw. |
+| `exclude` | `string[]` | `[]` | Core-preset feature keys (command names / item ids) to remove, e.g. `["taskList", "codeBlock"]`. Only affects the core preset, never plugins. |
+
+### Methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `getMarkdown()` | `string` | Serialise the current document to Markdown. |
+| `setMarkdown(md, { silent? })` | `void` | Replace the document. `silent: true` skips the history snapshot and the `change` event. |
+| `getHTML()` | `string` | Current editor HTML (rarely needed). |
+| `isEmpty()` | `boolean` | No visible text and no image/divider/checkbox/code block. |
+| `focus()` / `blur()` | `void` | Focus control. |
+| `exec(cmd, payload?)` | `boolean` | Run a registered command. `false` when read-only, unregistered (warns), or the command refused. |
+| `insertImages(files, { alt? })` | `Promise<void>` | Insert image files at the caret through `uploadImage` (or the data-URL fallback); pending placeholders stay out of the Markdown until each upload resolves. Resolves when every upload settles; non-image files are ignored. |
+| `transact(fn)` | `T` | Batch DOM mutations into **one** undo step and **one** change event. Re-entrant. |
+| `undo()` / `redo()` | `void` | Step the Markdown-snapshot history (also ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z, ⌘/Ctrl+Y). |
+| `setReadOnly(bool)` | `void` | Toggle editing at runtime — works in both directions. |
+| `setToolbar(toolbar)` | `void` | Swap the toolbar mode / button set at runtime (same values as the `toolbar` option). |
+| `setLayout("page" \| "fill")` | `void` | Swap the layout at runtime (same values as the `layout` option). |
+| `on(event, handler)` | `() => void` | Subscribe; returns an unsubscribe function. |
+| `off(event, handler)` | `void` | Unsubscribe. |
+| `destroy()` | `void` | Run plugin cleanups, remove all DOM, listeners and floating UI. |
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# One" });
+
+editor.setMarkdown("# Two"); // records history, schedules a change event
+assert.equal(editor.getMarkdown(), "# Two");
+assert.ok(editor.getHTML().includes("<h1>Two</h1>"));
+assert.equal(editor.isEmpty(), false);
+
+editor.undo();
+assert.equal(editor.getMarkdown(), "# One");
+editor.redo();
+assert.equal(editor.getMarkdown(), "# Two");
+editor.destroy();
+```
+
+### Events
+
+| Event | Payload | When |
+|---|---|---|
+| `change` | `(markdown: string)` | Debounced (~120 ms) after edits; `undo`/`redo` deliver it synchronously. |
+| `selection` | `(info: SelectionInfo \| null)` | Selection moved; `null` when it leaves the editor. |
+| `focus` / `blur` | — | The editable region gained/lost focus. |
+
+`SelectionInfo` carries `empty`, `collapsed`, the five built-in mark flags
+(`bold`, `italic`, `strike`, `code`, `link`), an **open-world `marks` record**
+(the `isActive()` result of every registered command that defines one — plugin
+commands included), the current `block` kind (`"paragraph"`, `"heading1"`…
+`"heading6"`, `"bulletList"`, `"orderedList"`, `"taskList"`, `"blockquote"`,
+`"codeBlock"`, `"other"`), and a viewport `rect` for positioning your own UI.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "# One" });
+
+const seen: string[] = [];
+const off = editor.on("change", (md) => seen.push(md));
+
+editor.setMarkdown("# Two"); // change is debounced (~120 ms) after edits…
+editor.undo();               // …but undo/redo deliver it synchronously
+assert.deepEqual(seen, ["# One"]);
+
+off();                       // on() returned an unsubscribe function
+editor.redo();
+assert.deepEqual(seen, ["# One"]); // no longer listening
+editor.destroy();
+```
+
+### Commands (`editor.exec`)
+
+Commands are typed through the `CommandPayloads` interface: the payload argument
+is **required exactly when the command declares one**, and TypeScript
+autocompletes every declared name. Plugins add their own commands via module
+augmentation; plain-JS callers can pass any string (`AnyCommand`) — executing an
+unregistered name warns in the console and returns `false`, it never throws.
+
+| Command | Payload | Effect |
+|---|---|---|
+| `bold`, `italic`, `strike` | — | Toggle the inline mark at the selection. |
+| `code` | — | Toggle inline `<code>` at the selection. |
+| `link` | `{ href: string \| null }` | Set/replace the link at the selection; `null` (or `""`) removes it. |
+| `clear` | — | Remove inline formatting at the selection. |
+| `paragraph` | — | Turn the caret block into a paragraph. |
+| `heading1` … `heading6` | — | Turn the caret block into a heading; running it again toggles back to a paragraph. |
+| `bulletList`, `orderedList`, `taskList` | — | Turn the caret block into a list (or toggle the list off; `taskList` upgrades a plain bullet list in place). |
+| `blockquote` | — | Toggle a quote. |
+| `codeBlock` | — | Toggle a fenced code block. |
+| `divider` | — | Insert a `---` divider after the caret block. |
+| `image` | `{ src: string; alt?: string }` | Insert an image block followed by an empty paragraph. |
+| `table` | `{ rows?: number; cols?: number }` | Insert a GFM table (default 3×3, clamped to 50×12: a `thead` header row + body rows) after the caret block; the caret lands in the first header cell. Editing behaviour: [Tables](MARKDOWN_AND_SHORTCUTS.md#tables). |
+
+Plugins in this repo add `highlight` (no payload),
+`callout` (`{ kind?: "note" | "tip" | "important" | "warning" | "caution" }`)
+and `diagram` (`{ lang: string; source?: string }`, registered by both
+`diagrams()` and `edodoDraw()`) — see
+[First-party plugins](FIRST_PARTY_PLUGINS.md).
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "Make me a heading" });
+
+// Block commands act on the block that holds the caret/selection.
+const p = editor.content.querySelector("p")!;
+const range = document.createRange();
+range.selectNodeContents(p);
+range.collapse(false);
+const sel = window.getSelection()!;
+sel.removeAllRanges();
+sel.addRange(range);
+
+editor.exec("heading2");
+assert.equal(editor.getMarkdown(), "## Make me a heading");
+
+// Payloads are required exactly when the command declares one.
+editor.exec("image", { src: "https://example.com/cat.png", alt: "A cat" });
+assert.equal(
+  editor.getMarkdown(),
+  "## Make me a heading\n\n![A cat](https://example.com/cat.png)",
+);
+editor.destroy();
+```
+
+Declaring a payload for your own command (TypeScript):
+
+```ts no-run
+declare module "edodo-write" {
+  interface CommandPayloads {
+    myEmbed: { url: string };
+  }
+}
+// Now editor.exec("myEmbed", { url }) is fully typed — and
+// editor.exec("myEmbed") is a compile error.
+```
+
+### Transactions
+
+`transact(fn)` batches any number of mutations (including nested `exec` calls)
+into a single undo step and a single change event:
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "start" });
+
+editor.transact(() => {
+  editor.exec("divider");
+  editor.exec("divider");
+});
+assert.equal(editor.getMarkdown(), "start\n\n---\n\n---");
+
+editor.undo(); // ONE undo reverts the whole transaction
+assert.equal(editor.getMarkdown(), "start");
+editor.destroy();
+```
+
+## React: `<EdodoWriteEditor />`
+
+```tsx
+import { useRef, useState } from "react";
+import { EdodoWriteEditor, Markdown } from "edodo-write/react";
+import type { EdodoWrite, SelectionInfo } from "edodo-write/react";
+import { highlight } from "edodo-write/plugins";
+import "edodo-write/styles.css";
+
+export function Notes() {
+  const [md, setMd] = useState("# Hello");
+  const editorRef = useRef<EdodoWrite | null>(null);
+  return (
+    <div>
+      <EdodoWriteEditor
+        value={md}
+        onChange={setMd}
+        placeholder="Write…"
+        plugins={[highlight()]}
+        onReady={(editor) => { editorRef.current = editor; }}
+        onSelection={(info: SelectionInfo | null) => console.log(info?.block)}
+      />
+      <Markdown value={md} />
+    </div>
+  );
+}
+```
+
+The wrapper's contract:
+
+- **`value` is "initial + controlled".** An external `value` that differs from
+  the last Markdown the editor emitted re-hydrates the document. Echoing the
+  `onChange` value straight back (the usual controlled pattern) never clobbers
+  the caret while typing.
+- **Options are captured on mount.** `plugins`, `exclude`, `toolbar`,
+  `slashMenu`, etc. are read once when the editor is constructed. To change
+  them, remount the component (e.g. with a different `key`).
+- `onReady(editor)` hands you the underlying `EdodoWrite` instance for
+  imperative calls (`exec`, `undo`, `setReadOnly`, …).
+- `onSelection(info)` mirrors the `selection` event — build your own toolbar
+  from it if you disable the built-in one.
+- `<Markdown value />` renders Markdown read-only with the editor's stylesheet
+  (no plugin extensions — for plugin content, render through `createCodec` or a
+  read-only editor constructed with the same plugins).
+
+## Functional helpers (no editor instance)
+
+```ts
+import { toHTML, toMarkdown, renderMarkdown, sanitizeHtml } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+assert.equal(toHTML("# Hi").trim(), "<h1>Hi</h1>");   // Markdown → sanitised HTML
+assert.equal(toMarkdown("<h1>Hi</h1>"), "# Hi");      // HTML → Markdown
+
+const target = document.createElement("div");
+renderMarkdown("**bold** text", target);              // read-only render into an element
+assert.ok(target.innerHTML.includes("<strong>bold</strong>"));
+
+// Allow-list sanitiser: scripts, event handlers and script-scheme URLs go.
+assert.equal(sanitizeHtml('<p onclick="x()">hi<script>evil()</script></p>'), "<p>hi</p>");
+```
+
+`toHTML(md, { sanitize: false })` returns raw `marked` output for a DOM-free,
+trusted-input SSR path. These helpers use the **plain GFM pipeline** — for the
+exact codec of an editor constructed with plugins, build one with `createCodec`
+from `edodo-write/testing`:
+
+```ts
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { highlight } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+const codec = createCodec([highlight()]);
+assertRoundTrip(codec, "some ==highlighted== words"); // throws on divergence
+assert.equal(codec.serialize(codec.parse("==hi==")), "==hi==");
+```
+
+### Server-side & framework-agnostic APIs
+
+These run in **bare Node** (Next.js server components, edge, workers, CLIs) —
+the sanitiser and every helper below are DOM-free.
+
+**Plugin-aware render (`edodo-write`).** `renderMarkdownWithPlugins(md, plugins)`
+renders Markdown to sanitised HTML through the *same* codec an editor built
+with those plugins uses, so read-only output matches what the editor would
+round-trip. For hot paths build the codec once with
+`createRenderCodec(plugins)` and reuse it.
+
+```ts
+import { renderMarkdownWithPlugins, createRenderCodec } from "edodo-write";
+import { highlight } from "edodo-write/plugins";
+import { strict as assert } from "node:assert";
+
+assert.ok(renderMarkdownWithPlugins("a ==b==", [highlight()]).includes("<mark>b</mark>"));
+
+const codec = createRenderCodec([highlight()]); // build once, reuse
+assert.ok(codec.render("a ==b==").includes("<mark>b</mark>"));
+```
+
+**Plain-text excerpts (`edodo-write`).** `toPlainText(md, opts)` walks the
+Markdown token tree (never HTML-strip) to a clean excerpt — for SEO meta,
+search indexes, notifications. Supports `maxLength` (word-boundary truncation
+with an ellipsis), `preserveLineBreaks`, and resolves plugin tokens (emoji →
+glyph, mention → `@Display`).
+
+```ts
+import { toPlainText } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+assert.equal(toPlainText("# Title\n\nSome **bold** text."), "Title Some bold text.");
+assert.equal(toPlainText("a very long sentence here", { maxLength: 10 }), "a very…");
+```
+
+**Node-safe parse / visitor API (`edodo-write/parse`).** Code-aware Markdown
+utilities that never touch a fenced/inline-code span: `splitCodeSegments`,
+`stripCodeBlocks`, `markCodeLines`, `extractTokens`, `parseTokens` (a token
+tree that applies plugin grammars), and `toggleTaskInMarkdown(md, index, checked)`
+for task-list checkboxes.
+
+```ts
+import { toggleTaskInMarkdown, stripCodeBlocks } from "edodo-write/parse";
+import { strict as assert } from "node:assert";
+
+assert.equal(toggleTaskInMarkdown("- [ ] a\n- [ ] b", 1, true), "- [ ] a\n- [x] b");
+assert.equal(stripCodeBlocks("text\n\n```\ncode\n```").trim(), "text");
+```
+
+**Email render adapter (`edodo-write/email`).** `toEmailHtml(md, opts)` renders
+Markdown to inline-styled email HTML (mail-client safe: `style=""` on every
+element, headings clamped to h2–h4, links forced `target=_blank`, tables
+dropped, images → links, `{{placeholder}}` substitution) plus a plain-text
+twin, then runs a restricted email allow-list sanitiser. Themes/shells/footers
+are injectable; the shipped `NEUTRAL_EMAIL_THEME` carries zero brand strings.
+`createEmailRenderer(defaults)` binds a house style once. Never throws.
+
+```ts
+import { toEmailHtml } from "edodo-write/email";
+import { strict as assert } from "node:assert";
+
+const { html, text } = toEmailHtml("# Hi\n\nWelcome **aboard**.");
+assert.ok(html.includes("style=")); // every element inline-styled
+assert.ok(text.includes("Welcome aboard"));
+```
+
+**Configurable HTML ingest (`edodo-write/ingest`).** `createHtmlToMarkdown(opts)`
+returns `{ htmlToMarkdown, service }` — an isolated turndown instance for
+pasting/importing external HTML, with configurable turndown options, gfm
+toggle, `stripTags`, and custom rules, plus dual defence against dangerous
+tags. `looksLikeHtml(str)` is a cheap gate before converting.
+
+```ts
+import { createHtmlToMarkdown, looksLikeHtml } from "edodo-write/ingest";
+import { strict as assert } from "node:assert";
+
+const { htmlToMarkdown } = createHtmlToMarkdown();
+assert.equal(looksLikeHtml("<p>hi</p>"), true);
+assert.equal(htmlToMarkdown("<h1>Title</h1><p>body</p>").trim(), "# Title\n\nbody");
+```
+
+## Plugins
+
+Plugins are plain objects created with `definePlugin({ name, … })` and passed to
+the constructor. They can contribute commands, input rules, keybindings,
+slash/toolbar/block-menu items, paired markdown (marked + turndown) extensions,
+additive sanitizer allowances, a `setup` hook, and event hooks. Collisions
+(duplicate plugin names, command names, item ids) **throw at construction**;
+runtime errors in a plugin are isolated so they never break typing. Plugin
+keybindings (priority 100) run before the core preset (priority 0), so a plugin
+can shadow `Mod-B` — but the structural engine (Enter/Backspace/Tab semantics,
+undo history, the clipboard contract, the sanitizer's denial floor, drag
+mechanics) is deliberately not pluggable.
+
+See the **[Plugin guide](PLUGIN_GUIDE.md)** for the full plugin API, and
+`src/plugins/highlight.ts` for the canonical ~50-line example.
+
+**First-party plugins.** A set ships with the package, importable from
+`edodo-write/plugins`: `highlight()` (`==text==`), `callout()` (GitHub
+alerts), `math()` (`$…$` / `$$…$$` TeX, KaTeX when installed), `diagrams()` /
+`edodoDraw()` (fenced code → live diagram widgets, mermaid included),
+`tags({ source })` (`#tag`/`@mention` chips fed by your own suggestion
+source, stored as plain GFM), `emoji({ map })` (`:shortcode:` ↔ glyph chips),
+`embeds()` (a bare URL line → video / audio / bookmark widget), `footnote()`
+(`[^id]` references + definitions), `file()` (`!file[name](url)` attachment
+chips), and `detailsToggle()` (collapsible `<details>` blocks). Each one's
+options, exact stored Markdown, and degradation story are documented in
+**[First-party plugins](FIRST_PARTY_PLUGINS.md)**.
+
+## Built-in behaviours (no configuration)
+
+On by default whenever the editor is editable:
+
+- **Markdown clipboard.** Copy/cut put the selection on the clipboard as
+  Markdown (`text/plain`) *and* rich HTML (`text/html`, regenerated from that
+  Markdown so no editor internals leak into Docs/Word). Paste accepts either:
+  rich HTML is sanitised and converted to Markdown, plain text is treated as
+  Markdown — then parsed and inserted as real blocks, splitting the current
+  block as needed. Pasting a bare URL over a selection turns it into a link.
+- **Images.** Pasting an image file (screenshots included — image files beat
+  text flavours on the same clipboard), dropping files onto the document
+  (inserted at the drop point), and the `/image` popover's **Upload…** button
+  all funnel through `insertImages` and your `uploadImage`. A pending
+  placeholder renders immediately but stays out of `getMarkdown()` until its
+  upload resolves; deleting it mid-upload cancels; a failed upload removes it
+  and shows a toast. Without an uploader, images embed as `data:` URLs (5 MB
+  cap). Details: **[Image hosting](IMAGE_HOSTING.md)**.
+- **Block handles.** Hovering a block shows a left-gutter handle: `+` inserts a
+  paragraph below; the `⣿` grip **drags to reorder** (pointer-based, with a
+  drop-indicator line and a translucent ghost) and **clicks to open the block
+  menu** — Turn into (Text, Heading 1–3, lists, To-do, Quote, Code), Duplicate,
+  Copy as Markdown, Delete. The stylesheet reserves a `2.75rem` left gutter on
+  `.ew-content` for the handle.
+- **Link popover.** ⌘/Ctrl+K, the toolbar `🔗` button, or clicking an existing
+  link opens an inline popover to edit, open, or remove the link. Clicking a
+  link never navigates while editing (read-only editors keep native
+  navigation).
+- **Undo/redo.** A Markdown-snapshot history (up to 300 entries) behind
+  ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z and ⌘/Ctrl+Y. Note: states that serialise to
+  identical Markdown collapse into one history entry.
+- **Select-all replace.** Typing or deleting over a select-all resets the
+  document to a single clean paragraph instead of leaving a stale emptied
+  heading (Chrome's native behaviour).
+- **Click below the last block** appends a new paragraph — the content's bottom
+  padding is clickable, Notion-style.
+- **Per-block placeholder.** A focused empty paragraph in a non-empty document
+  shows a "Type “/” for commands…" hint.
+- **Table editing.** Tables are editable in place: Tab/Shift+Tab walk cells
+  (Tab in the last cell appends a row), Enter moves down a row (and escapes
+  below from the last row), and hovering a cell reveals Notion-style handles —
+  a column pill (Insert left/right, Move, Clear contents, Delete column), a row
+  pill (Insert above/below, Move, Clear, Delete row), and + buttons on the
+  table's right/bottom edges. The old block-menu entries are replaced by these
+  hover controls; the block menu keeps whole-table actions
+  with the GFM-required header row protected. Guards still hold: Backspace
+  never merges a paragraph into a table. Details:
+  [Tables](MARKDOWN_AND_SHORTCUTS.md#tables).
+- **Document normaliser.** After every input, native `contentEditable` damage
+  (stray root text nodes, emptied block shells, styled spans) is repaired
+  before input rules run.
+- **⌘/Ctrl+U is swallowed** — Markdown has no underline, so the `<u>` the
+  browser would insert would silently vanish from the serialised value.
+
+Disable the toolbar or slash menu with `toolbar: false` / `slashMenu: false`,
+or remove individual features with `exclude`. Clipboard, drag, undo and the
+normaliser are intrinsic to the editing model and always on in edit mode.
+
+## Embedding as a composer (comment box, chat input)
+
+The default look is a document page: a centered column with a long bottom pad.
+When the editor replaces a `<textarea>` inside YOUR box — a comment form, a
+chat composer — switch both dials:
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const box = document.createElement("div"); // the app's composer box
+box.style.height = "160px";
+document.body.appendChild(box);
+
+const editor = new EdodoWrite(box, {
+  placeholder: "Share your thoughts…",
+  layout: "fill",                                       // take the box's width AND height
+  toolbar: { mode: "fixed", items: ["bold", "italic", "strike", "link", "bulletList", "orderedList", "code"] },
+});
+
+assert.ok(box.classList.contains("ew--fill"));
+const bar = box.querySelector(".ew-fixed-toolbar")!;
+assert.equal(bar.querySelectorAll("button").length, 7);
+assert.equal(bar.nextElementSibling, editor.content);   // toolbar docks above the content
+
+editor.setLayout("page");                               // both dials flip at runtime
+assert.equal(box.classList.contains("ew--fill"), false);
+editor.setToolbar("floating");
+assert.equal(box.querySelector(".ew-fixed-toolbar"), null);
+editor.destroy();
+```
+
+`"fill"` drops the page opinions — no centered `max-width` column, no `40vh`
+bottom pad — and lays the host out as a flex column, so the fixed toolbar
+docks on top and the content area stretches to whatever height the box has
+(scrolling internally when the text outgrows it). The fixed toolbar reflects
+formatting **at the caret** (no selection needed), disables itself in
+read-only mode, and draws from the same registry as the floating bar — items
+contributed by plugins appear automatically, and `items` picks and orders the
+buttons per instance.
+
+## Read-only
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host, { value: "Locked.", readOnly: true });
+
+assert.equal(editor.content.getAttribute("contenteditable"), "false");
+assert.equal(editor.exec("bold"), false); // commands are refused
+
+editor.setReadOnly(false);                // fully re-enables editing
+assert.equal(editor.content.getAttribute("contenteditable"), "true");
+editor.destroy();
+```
+
+Read-only hides the toolbar, slash menu and block handles, closes any open
+popovers, refuses commands and checkbox clicks, and restores native link
+navigation. `setReadOnly` works in **both** directions at runtime — the editing
+chrome is constructed unconditionally and gated on the live flag.
+
+## Styling & theming
+
+The stylesheet is theme-aware:
+
+- Light by default; automatic dark via `prefers-color-scheme`.
+- Force a theme with `:root[data-theme="dark"|"light"]` on the document, or an
+  `ew--dark` / `ew--light` class on the host element.
+- Every colour is a CSS variable on `.ew` (`--ew-fg`, `--ew-bg`, `--ew-accent`,
+  `--ew-border`, `--ew-code-bg`, …) that you can override in your own CSS. The
+  reading width is `--ew-content-width` (default `46rem`).
+- `.ew-content` reserves a `2.75rem` left gutter for the block handles and tall
+  bottom padding for click-to-append; the read-only variant drops the gutter.
+
+---
+
+# Image hosting
+
+# Image hosting
+
+The editor never stores image bytes. An image in the document is exactly what
+it is in Markdown — `![alt](url)` — and the `uploadImage` option decides what
+that URL is. You hand the editor a function that stores a `File` somewhere and
+resolves with its URL; the editor handles everything around it (placeholders,
+ordering, cancellation, failure).
+
+## The mental model
+
+Three ingestion paths, one funnel:
+
+1. **Clipboard paste** — a screenshot or a copied image file. Image files win
+   over text flavours on the same clipboard (Notion behaviour — and uploading
+   your own copy beats hotlinking whatever URL rode along in the HTML
+   flavour).
+2. **Drag-and-drop** — image files dropped onto the document are inserted at
+   the drop point (the caret is placed under the pointer first).
+3. **The `/image` popover** — the **Upload…** button opens a file picker
+   (multiple files, `image/*` only; the alt field applies to the picked
+   files). The URL field beside it inserts a URL directly, with no upload.
+
+All three call `editor.insertImages(files)` — which is public, so your own
+file picker or API can use the same path — and every file flows through the
+same `uploadImage`. Whatever URL comes back is what lands in the Markdown; the
+document's value never contains anything else.
+
+## The uploader contract
+
+```ts no-run
+type ImageUploader = (file: File, editor: EdodoWrite) =>
+  Promise<string | { src: string; alt?: string }>;
+```
+
+- Resolve with a **string** — the hosted URL — or with `{ src, alt? }` when
+  the upload also produced better alt text (a returned `alt` overrides the
+  default).
+- Alt text defaults to the filename without its extension (`IMG_4321.png` →
+  `IMG_4321`); the popover's alt field or `insertImages(files, { alt })`
+  override that default.
+- **Throw (or reject) to signal failure.** The editor removes the pending
+  placeholder, shows an "Image upload failed" toast, logs the error via
+  `console.error`, and leaves the document exactly as it was. Resolving
+  without a `src` counts as a failure too.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "Trip report",
+  // A stub uploader: pretend the bytes went to a CDN.
+  uploadImage: async (file) => `https://cdn.example.com/${file.name}`,
+});
+
+const file = new File([new Uint8Array([1, 2, 3])], "sunrise.png", { type: "image/png" });
+await editor.insertImages([file]); // resolves when the upload settles
+
+// The uploader's URL — never the bytes — is what lands in the Markdown,
+// with the filename (sans extension) as the default alt text.
+assert.equal(
+  editor.getMarkdown(),
+  "Trip report\n\n![sunrise](https://cdn.example.com/sunrise.png)",
+);
+editor.destroy();
+```
+
+## While an upload is in flight
+
+Each image renders immediately as a pending placeholder (`img[data-uploading]`
+with a local `blob:` preview) — but it does **not** exist in the document's
+value yet:
+
+- **`getMarkdown()` excludes pending images.** A serializer rule skips
+  `img[data-uploading]`, so a `change` event or autosave that fires mid-upload
+  can never persist a `blob:` preview URL — which would be meaningless outside
+  the current page session. The image joins the Markdown only once a real URL
+  exists.
+- **Delete to cancel.** Removing the placeholder while its upload is in
+  flight cancels that image — the URL the uploader later resolves with is
+  discarded.
+- **Failure cleans up.** A rejected upload removes the placeholder, shows the
+  "Image upload failed" toast, and leaves the document unchanged.
+- `await editor.insertImages(files)` resolves once every upload has settled.
+  Multiple files keep their order — all placeholders are placed first, then
+  the uploads race.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+const editor = new EdodoWrite(host, {
+  value: "Nothing is lost.",
+  uploadImage: async () => { throw new Error("storage unreachable"); },
+});
+
+const file = new File([new Uint8Array([1])], "doomed.png", { type: "image/png" });
+
+// The editor reports the failure via console.error — keep the output quiet.
+const original = console.error;
+console.error = () => {};
+try {
+  await editor.insertImages([file]);
+} finally {
+  console.error = original;
+}
+
+// Placeholder removed, "Image upload failed" toast shown — and the document
+// is exactly what it was.
+assert.equal(editor.getMarkdown(), "Nothing is lost.");
+editor.destroy();
+```
+
+## Wiring real hosting
+
+### A multipart upload endpoint (S3 / R2 style)
+
+Most apps already have an authenticated endpoint that accepts a multipart form
+and returns the stored file's public URL:
+
+```ts no-run
+import { EdodoWrite } from "edodo-write";
+import type { ImageUploader } from "edodo-write";
+
+const uploadImage: ImageUploader = async (file) => {
+  const body = new FormData();
+  body.append("file", file, file.name);
+
+  const res = await fetch("/api/img/upload", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${authToken}` }, // or cookie/session auth
+    body, // the browser sets the multipart Content-Type + boundary itself
+  });
+  if (!res.ok) throw new Error(`upload failed: HTTP ${res.status}`);
+
+  // e.g. { success: true, data: { url: "https://cdn.example.com/abc123.png" } }
+  const json = await res.json();
+  if (!json.success) throw new Error("upload rejected by the server");
+  return json.data.url;
+};
+
+const editor = new EdodoWrite(host, { uploadImage });
+```
+
+Don't set `Content-Type` yourself when sending `FormData` — the browser must
+generate the multipart boundary.
+
+### Supabase Storage
+
+```ts no-run
+import { createClient } from "@supabase/supabase-js";
+import { EdodoWrite } from "edodo-write";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const editor = new EdodoWrite(host, {
+  uploadImage: async (file) => {
+    const path = `${crypto.randomUUID()}-${file.name}`;
+    const { error } = await supabase.storage.from("images").upload(path, file, {
+      contentType: file.type,
+    });
+    if (error) throw error; // → placeholder removed + failure toast
+    return supabase.storage.from("images").getPublicUrl(path).data.publicUrl;
+  },
+});
+```
+
+The `images` bucket must be public for `getPublicUrl` — otherwise return a
+signed URL (`createSignedUrl`) instead.
+
+### Browser-local IndexedDB (offline / drafts)
+
+For an offline-first draft surface you can keep the bytes in the browser and
+serve them back yourself — for example from a service worker:
+
+```ts no-run
+import { EdodoWrite } from "edodo-write";
+
+async function saveDraftImage(id: string, file: File): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open("draft-images", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("files");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("files", "readwrite");
+    tx.objectStore("files").put(file, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+const editor = new EdodoWrite(host, {
+  uploadImage: async (file) => {
+    const id = crypto.randomUUID();
+    await saveDraftImage(id, file);
+    // A service-worker fetch handler serves /draft-images/<id> from the same
+    // IndexedDB store, so the <img> renders normally while drafting.
+    return `/draft-images/${id}`;
+  },
+});
+```
+
+**Warning:** these URLs resolve only in that browser profile — the service
+worker and the IndexedDB store live there and nowhere else. Markdown exported,
+synced, or opened anywhere else will have **dead image links**. That is
+exactly why this is not the default: use it for drafts, and re-upload to real
+hosting on publish.
+
+## Zero configuration: the data-URL fallback
+
+Without `uploadImage`, images are embedded into the Markdown itself as
+`data:image/…;base64,` URLs (the built-in `dataUrlUploader`):
+
+- **Fully portable** — the document is self-contained and renders in any
+  Markdown viewer, with no hosting at all.
+- **Costs document size** — base64 is ~4/3 of the file's bytes, on a single
+  Markdown line.
+- **5 MB hard cap** (`DATA_URL_MAX_BYTES`) — a larger file fails with a clear
+  error telling you to configure `uploadImage` (the normal failure path:
+  toast, document unchanged).
+- **Automatic downscaling** — PNG/JPEG/WebP larger than 2048px on the longest
+  side (`DOWNSCALE_MAX_DIMENSION`) are downscaled on a canvas before embedding
+  (real browsers only — environments without a 2D canvas, like jsdom, embed
+  the original). GIFs (animation would be lost) and SVGs (already text) embed
+  verbatim.
+- A **one-time `console.info` advisory** per editor instance tells you the
+  fallback is in use. Passing `uploadImage: dataUrlUploader` explicitly makes
+  the same choice deliberately — and without the advisory.
+
+Fine for note-taking, small documents, and anything meant to live as one
+self-contained file. Configure real hosting for anything collaborative,
+anything autosaved to a database on every change, or documents with more than
+a handful of images.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+const editor = new EdodoWrite(host); // no uploadImage configured
+
+const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // a few PNG-ish bytes
+const file = new File([bytes], "tiny.png", { type: "image/png" });
+
+// Logs the one-time advisory via console.info, then embeds the bytes.
+await editor.insertImages([file]);
+
+// The Markdown is fully self-contained — no hosting involved.
+assert.match(editor.getMarkdown(), /^!\[tiny\]\(data:image\/png;base64,/);
+editor.destroy();
+```
+
+## Constraints & security
+
+- **Only `image/*` files are accepted.** Every ingestion path filters by MIME
+  type, and `insertImages` silently ignores anything else. Read-only editors
+  refuse all of it.
+- **The sanitiser strips script-scheme URLs** — `javascript:`, `vbscript:` and
+  `data:text/html` — from `src`/`href` when Markdown or pasted HTML is parsed.
+  `data:image/*` is allowed (the fallback depends on it).
+- **Alt text defaults to the filename sans extension**; supply better alt via
+  the popover's alt field, `insertImages(files, { alt })`, or the uploader's
+  `{ src, alt }` return value.
+- **The popover's URL field performs no upload and no fetch** — the URL is
+  inserted as-is.
+
+Everything image-related is exported from `edodo-write`: `dataUrlUploader`,
+`isImageFile`, `DATA_URL_MAX_BYTES`, `DOWNSCALE_MAX_DIMENSION`, and the
+`ImageUploader` / `ImageUploadResult` types.
+
+---
+
+# Markdown support & shortcuts
+
+# Markdown support & shortcuts
+
+Markdown is the source of truth. Everything you type is rendered live and
+serialised back to GFM Markdown on every change.
+
+## Type-to-format (input rules)
+
+Type these at the **start of a line** — the trigger text is removed as the
+block transforms. Most fire on the trailing space; `` ``` `` and `---` convert
+**instantly** on the third character (Notion parity):
+
+| Type | Becomes |
+|---|---|
+| `# ` … `###### ` | Heading 1–6 |
+| `- ` or `* ` | Bulleted list |
+| `1. ` (any number) | Numbered list |
+| `[ ] ` | To-do item (unchecked) |
+| `[x] ` | To-do item (checked) |
+| `> ` | Blockquote |
+| `` ``` `` | Code block — instant on the third backtick (`` ``` `` + space still works) |
+| `---` | Divider — instant on the third dash |
+| `___ ` or `*** ` | Divider — space-triggered, so `***bold italic***` stays typeable |
+
+Pressing `Enter` on a paragraph that is exactly `---`, `___` or `***` (three
+or more of the same character) also converts it to a divider.
+
+Inline marks fire as you close the delimiter, mid-line:
+
+| Type | Becomes |
+|---|---|
+| `**bold**` | **bold** |
+| `*italic*` or `_italic_` | *italic* |
+| `` `code` `` | `code` |
+| `~~strike~~` | ~~strike~~ |
+| `==highlight==` | highlighted `<mark>` — via the `highlight()` plugin, not core |
+| `$x^2$` | inline TeX chip — via the `math()` plugin, not core |
+
+Input rules never fire inside code blocks, and never mid-IME-composition
+(CJK/dead-key input is safe). With the `callout()` plugin, typing `[!note] `
+(or `tip`/`important`/`warning`/`caution`) at the start of a quote turns it
+into a callout.
+
+## Plugin-provided syntax (opt-in)
+
+These lines only mean something when the corresponding first-party plugin is
+installed — and every one of them stays valid, lossless Markdown without it.
+Details, options and worked examples:
+[First-party plugins](FIRST_PARTY_PLUGINS.md).
+
+| Syntax | Plugin | Stored as |
+|---|---|---|
+| `==highlight==` | `highlight()` | `==…==` (extension flavour — plain viewers show the markers) |
+| `> [!NOTE]` … `[!CAUTION]` | `callout()` | a GitHub alert — an ordinary blockquote elsewhere |
+| `$x^2$` and `$$…$$` blocks | `math()` | TeX between dollars — GitHub renders both natively |
+| ` ```edd ` / ` ```mermaid ` fences | `edodoDraw()` / `diagrams()` | a plain fenced code block — GitHub renders mermaid natively |
+| `#tag` → suggestion menu | `tags()` | a plain GFM link `[#tag](href)`, or plain text — zero new syntax |
+| `:shortcode:` and `:` + 2 chars → suggestion menu | `emoji()` | the `:shortcode:` token — the convention GitHub/Slack/Discord all read |
+| a paragraph that is one bare URL | `embeds()` | the bare URL line — a clickable autolink everywhere else |
+
+## Slash menu
+
+Press `/` at the start of an empty paragraph — or an empty list item — to open
+the block picker. Type to filter (multi-word queries like `/heading 1` work),
+`↑`/`↓` to move, `Enter` or `Tab` to insert, `Esc` to dismiss; a query with no
+matches closes the menu.
+
+Items are grouped: **Basic blocks** (Text, Heading 1–3, Bulleted list, Numbered
+list, To-do list, Quote, Code, Divider), **Media** (Image — a popover with an
+**Upload…** button that sends files through your `uploadImage`, plus a URL +
+alt form; inserts `![alt](src)` — see [Image hosting](IMAGE_HOSTING.md); and
+Table — a 3×3 GFM table), **Advanced** (Heading 4–6). Plugins add their own
+items: `callout()` adds Callout and Warning callout under Media, `math()` adds
+Math block under Advanced, and `edodoDraw()` / `diagrams()` add Diagram /
+Mermaid diagram under Media.
+
+## Floating toolbar
+
+Select text to reveal a toolbar with Bold, Italic, Strikethrough, Inline code,
+Link (opens the link popover), Heading 1/2 and Quote. Plugins can add buttons
+(`highlight()` adds one).
+
+## Links
+
+The link popover replaces any prompt-based flow:
+
+- **⌘/Ctrl+K** or the toolbar `🔗` button with text selected → enter a URL.
+- **Click an existing link** while editing → edit the URL, Open, or Remove.
+- **Paste a URL over selected text** → the selection becomes a link.
+
+## Tables
+
+`/table` inserts a 3×3 GFM table (or run the `table` command with
+`{ rows?, cols? }` — clamped to 50 rows × 12 columns). The caret lands in the
+first header cell; just type. Tables are GFM-shaped by construction: a header
+row (`thead th`) plus body rows.
+
+Keys inside a table:
+
+| Keys | Action |
+|---|---|
+| `Tab` | Next cell; in the **last** cell, append a new row (and move into it) |
+| `Shift + Tab` | Previous cell; in the first cell it is consumed — never escapes the table |
+| `Enter` | The cell below (same column); from the **last row**, escape to a paragraph below the table |
+| `Shift + Enter` | A line break **inside** the cell — stored as a literal `<br>`, the GFM idiom for multi-line cells |
+| `Backspace` | Deletes text only — it never merges cells and never pulls outside content into the table |
+
+**Structure** — hover any cell for the Notion-style handles: a pill above the
+column (*Insert left / Insert right / Move left / Move right / Clear contents /
+Delete column*) and a pill beside the row (*Insert above / Insert below / Move
+up / Move down / Clear contents / Delete row*), plus **+** buttons on the
+table's right edge (add column) and bottom edge (add row). Destructive actions
+on the header row are disabled — GFM requires it — and the last remaining
+column cannot be deleted. The block menu (grip click) keeps whole-table
+actions: Duplicate, Copy as Markdown, Delete.
+
+- **The header row is protected.** GFM tables require one, so *Delete row* on
+  the header refuses with a toast ("Markdown tables need their header row").
+- **There is no header column.** GFM can't represent one, so none is offered.
+
+*Turn into* entries are hidden for tables (moving cell contents into a heading
+would destroy the grid); *Duplicate*, *Copy as Markdown* and *Delete* still
+work. Enter and Backspace outside the table keep their guards: a paragraph
+never merges into a table, and Enter on the block escapes below it.
+
+Cells serialise **padded** (`| a   |`) — the canonical GFM form, stable from
+the first save onwards. An empty cell holds a `<br>` caret anchor in the
+editor and serialises empty.
+
+```ts
+import { strict as assert } from "node:assert";
+import { EdodoWrite } from "edodo-write";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+// Tables normalise to padded GFM cells on the first save, then stay
+// byte-stable.
+const editor = new EdodoWrite(host, { value: "| a | b |\n| --- | --- |\n| 1 | 2 |" });
+const padded = "| a   | b   |\n| --- | --- |\n| 1   | 2   |";
+assert.equal(editor.getMarkdown(), padded);
+editor.setMarkdown(padded, { silent: true });
+assert.equal(editor.getMarkdown(), padded);
+
+// The `table` command inserts a GFM-shaped table: thead header row + tbody.
+editor.setMarkdown("intro", { silent: true });
+editor.exec("table", { rows: 2, cols: 2 });
+assert.equal(editor.content.querySelectorAll("thead th").length, 2);
+assert.equal(editor.content.querySelectorAll("tbody tr").length, 1);
+assert.ok(editor.getMarkdown().includes("| --- | --- |"));
+editor.destroy();
+```
+
+## Block handles (hover gutter)
+
+Hover any block for the left-gutter handle:
+
+- `+` inserts an empty paragraph below the block.
+- Drag the `⣿` grip to reorder top-level blocks (drop-indicator line + ghost).
+- **Click** the `⣿` grip for the block menu: *Turn into* (Text, Heading 1–3,
+  Bulleted list, Numbered list, To-do list, Quote, Code), *Duplicate*, *Copy as
+  Markdown*, *Delete*. On a table, *Turn into* is replaced by the **Table**
+  group (row/column operations — see [Tables](#tables)).
+
+## Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| `⌘/Ctrl + B` | Bold |
+| `⌘/Ctrl + I` | Italic |
+| `⌘/Ctrl + Shift + E` | Inline code |
+| `⌘/Ctrl + K` | Link popover (needs a selection, or the caret on a link) |
+| `⌘/Ctrl + Shift + 7` | Numbered list |
+| `⌘/Ctrl + Shift + 8` | Bulleted list |
+| `⌘/Ctrl + Shift + 9` | To-do list |
+| `⌘/Ctrl + Z` | Undo |
+| `⌘/Ctrl + Shift + Z` or `⌘/Ctrl + Y` | Redo |
+| `⌘/Ctrl + U` | Swallowed — Markdown has no underline |
+| `Tab` / `Shift + Tab` | Indent / outdent a list item (implemented by the editor, not the browser; the first item of a list cannot indent). In a table: next / previous cell — see [Tables](#tables) |
+| `Shift + Enter` | Soft line break within a block (a backslash hard break in the Markdown); a plain newline inside a code block; a literal `<br>` inside a table cell |
+| `Enter` (in/at end of a heading or quote) | New **paragraph** below |
+| `Enter` (in a list item) | Split the item; in an **empty** item, exit the list |
+| `Enter` (in a code block) | New line, not a new block |
+| `Enter` (in a table cell) | The cell below; from the last row, escape to a paragraph below the table |
+| `Backspace` (start of heading/quote) | Convert to paragraph |
+| `Backspace` (start of a list item) | Outdent; at top level, turn into a paragraph |
+| `Backspace` (start of paragraph) | Merge into the previous block; a preceding divider (or widget figure) is deleted; a table is never merged into |
+
+`Mod` shortcuts from plugins run before the built-ins — `highlight()` binds
+`⌘/Ctrl + Shift + H`.
+
+## Copy, paste & drag
+
+- **Copy / cut** put the selection on the clipboard as **Markdown**
+  (`text/plain`) and as rich HTML (`text/html`, regenerated from that Markdown)
+  — pasting into a plain-text field yields Markdown; pasting into Docs/Word
+  yields formatting, without editor internals.
+- **Paste** accepts both flavours: rich HTML from the web is sanitised and
+  converted to Markdown; plain text is treated as Markdown. Either way it is
+  inserted as real blocks (headings, lists, quotes…), splitting the current
+  block where needed. A single-paragraph paste inserts inline at the caret.
+- **Paste a bare URL over a selection** to link it.
+- **Paste an image file** (a screenshot, a copied image) and it is uploaded via
+  the configured `uploadImage` — or embedded as a `data:` URL — then inserted
+  as `![alt](url)`. Image files win over text flavours on the same clipboard.
+- **Drop image files** from your file manager to insert them at the drop
+  point, through the same upload path. See [Image hosting](IMAGE_HOSTING.md).
+- **Drag** a block by the `⣿` grip to reorder; **click** the grip for the block
+  menu.
+
+## Serialised Markdown (the output flavour)
+
+Output is **GitHub-Flavored Markdown**: ATX headings (`#`), `-` bullets, `1.`
+ordered lists, fenced code blocks, `*italic*` / `**bold**` / `~~strike~~`,
+inlined links, task lists (`- [ ]` / `- [x]`), and tables. Specifics worth
+knowing:
+
+- **Nested lists indent by 4 spaces.**
+- **Soft line breaks (Shift+Enter) serialise as backslash hard breaks**
+  (`line\` + newline) — round-trip safe even through editors that trim
+  trailing whitespace.
+- **Code fences are preserved byte-for-byte** — alignment spaces, trailing
+  whitespace and blank-line runs inside a fence are never rewritten.
+- Literal `<` in prose is escaped (`\<`) so text like `a<b>c` or a spelled-out
+  `<script>` survives; `&` is escaped only when it would form an HTML entity.
+- Non-breaking spaces that `contentEditable` produces are normalised to plain
+  spaces in prose (never inside code fences).
+- Empty paragraphs (a stray `<p><br></p>` left by editing) are dropped; runs
+  of 3+ blank lines collapse to one blank line.
+- Tables normalise to padded GFM cells (`| a   | b   |`) — stable from the
+  second serialisation onwards.
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+// Nested lists: 4-space indentation, round-trip stable.
+const editor = new EdodoWrite(host, { value: "- parent\n    - child" });
+assert.equal(editor.getMarkdown(), "- parent\n    - child");
+
+// Soft breaks are backslash hard breaks.
+editor.setMarkdown("first line\\\nsecond line", { silent: true });
+assert.equal(editor.getMarkdown(), "first line\\\nsecond line");
+
+// Task lists.
+editor.setMarkdown("- [ ] open\n- [x] done", { silent: true });
+assert.equal(editor.getMarkdown(), "- [ ] open\n- [x] done");
+editor.destroy();
+```
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const host = document.createElement("div");
+document.body.appendChild(host);
+
+// Code fences round-trip byte-for-byte — including trailing spaces and
+// blank-line runs that the prose tidy would otherwise rewrite.
+const fence = "`".repeat(3);
+const value = fence + "\nspaced   out\n\n\nkept verbatim   \n" + fence;
+const editor = new EdodoWrite(host, { value });
+assert.equal(editor.getMarkdown(), value);
+editor.destroy();
+```
+
+Task-list checkboxes are interactive in the editor; ticking one updates the
+Markdown from `[ ]` to `[x]`.
+
+## Notes & limits
+
+- **Tables are fully editable GFM tables** — typing in cells, Tab/Shift+Tab
+  navigation, Enter row-hopping, and block-menu row/column operations (see
+  [Tables](#tables)). Two limits come from GFM itself: the header **row** is
+  required (deleting it is refused with a toast), and a header **column** is
+  not representable, so none is offered.
+- **Toggles / `<details>` are deliberately rejected** — they have no clean
+  Markdown form, and this editor never stores anything Markdown can't express
+  (`details`/`summary` are not in the sanitiser's allow-list).
+- **Highlight (`==…==`) is a plugin, not core** — plain-GFM viewers would show
+  the raw `==` markers, so you opt in via `highlight()`.
+- **Underline is intentionally not offered** (⌘/Ctrl+U is swallowed): Markdown
+  has no underline, so it could never survive a save.
+- **Undo collapses view states that serialise identically** — the history is a
+  stack of Markdown snapshots, so two DOM states with the same Markdown are one
+  entry.
+- Ordered lists created by commands or the slash menu start at 1; a `start`
+  attribute from parsed Markdown (`3.`) is preserved on round-trip.
+
+---
+
+# Development guide
+
+# Development guide
+
+The first thing to read if you're joining edodo-write. It explains how the
+code is laid out, how to run and test it, the non-obvious rules that keep a
+`contentEditable` editor sane, and how to release. Pair it with
+[ARCHITECTURE.md](ARCHITECTURE.md) (how it works) and
+[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) (how to extend it).
+
+## The one idea
+
+edodo-write is a **façade over Markdown**. The `contentEditable` surface is
+the *view*; **Markdown is the state**; parse/serialize is the reconciler.
+
+```
+Markdown ──parse (marked + sanitize)──▶ HTML in a contentEditable  ─┐
+   ▲                                                                │ user edits
+   └───────────── serialize (turndown + gfm) ◀──────────────────────┘ (every change)
+```
+
+Consequences that shape everything:
+
+- `getMarkdown()` serialises the live DOM; `setMarkdown()` re-hydrates it.
+- Undo/redo is a stack of **Markdown snapshots** — undo literally restores
+  prior state (`editor.ts`).
+- Correctness means: *the Markdown we emit must faithfully represent the view*
+  and round-trip back (guarded by `tests/roundtrip.test.ts`,
+  `tests/edge-cases.test.ts`, and `tests/plugins.test.ts`).
+
+## Repo layout
+
+```
+src/
+  core/                 framework-free engine (never imports React)
+    editor.ts           EdodoWrite — mounts, resolves plugins, owns events/undo/wiring
+    types.ts            the public type surface (EdodoPlugin, EditorContext, …)
+    plugin.ts           plugin resolution: registries, collisions throw, guard()
+    preset.ts           the core preset — built-ins via the same plugin API
+    commands.ts         built-in command bodies (manual-DOM block transforms)
+    input-rules.ts      the type-to-format RUNNER (rule sets live in preset/plugins)
+    keymap.ts           registered bindings + the Enter/Backspace/Tab engine
+    normalize.ts        document normalizer — schema invariants after every mutation
+    clipboard.ts        copy/cut → Markdown; paste Markdown/HTML/URL → blocks
+    parse.ts            Markdown → sanitised HTML (per-instance Marked)
+    serialize.ts        HTML → Markdown (per-instance turndown + fence-aware tidy)
+    sanitize.ts         allow-list HTML sanitiser (denial floor)
+    slash-menu.ts       "/" block picker (groups, multi-word queries)
+    toolbar.ts          floating selection toolbar
+    block-handles.ts    hover gutter: + / drag grip / grip-click block menu
+    ui.ts               floating-UI primitives (popover, menu, toast)
+    link-ui.ts          the link popover (Mod-K / toolbar / click-a-link)
+    dom.ts              selection/caret/DOM helpers (the shared toolbox)
+  lib/
+    index.ts            public core entry  → `edodo-write`
+    react.tsx           React wrapper      → `edodo-write/react`
+    testing.ts          createCodec/assertRoundTrip → `edodo-write/testing`
+  plugins/              first-party plugins → `edodo-write/plugins`
+    highlight.ts        ==text== ↔ <mark>   (the canonical plugin example)
+    callout.ts          GitHub alerts ↔ <blockquote data-callout>
+  e2e/main.ts           fixture entry for the Playwright suite (see below)
+  styles.css            all styles, themed via CSS variables on .ew
+  site/, main.tsx       the playground / docs SPA (GitHub Pages)
+tests/                  Vitest (jsdom) — the fast suite
+tests/e2e/              Playwright specs + helpers (real browser)
+e2e.html                the bare fixture page Playwright drives
+docs/                   the guides (single source of truth; also → public/llms*.txt)
+scripts/                gen-llms-txt.mjs, deploy-pages.sh, publish.sh
+```
+
+Data flows **view → services → nothing**; there is no store. Every module in
+`core/` is small and single-purpose; `dom.ts` is the shared toolbox they all
+lean on; `editor.ts` is the only orchestrator.
+
+## Setup & dev loop
+
+```bash
+npm install
+npm run dev        # playground at http://localhost:5283 — editor + live Markdown
+npm run typecheck  # tsc -b --noEmit   (keep at zero errors)
+npx vitest run     # fast suite (~2 s)
+npm run test:e2e   # Playwright (~12 s; starts the dev server itself)
+```
+
+The playground's right panel prints `getMarkdown()` live — the fastest way to
+see whether an edit produced correct Markdown. The dev server also serves
+`/e2e.html`, a chrome-free fixture that mounts a bare editor and exposes it as
+`window.editor`.
+
+## Three-stage testing
+
+jsdom implements neither `document.execCommand` nor real selection/typing/
+layout, so verification is split into three layers. All three must be green.
+
+### Stage 1 — Vitest (jsdom): the Markdown engine and DOM-only paths
+
+Run: `npx vitest run` (or `npm test`). Target: the whole suite in under ~3 s,
+so it can run on every save.
+
+This stage owns everything pure or execCommand-free: parse / serialize /
+round-trip / tidy / sanitize, the **normalizer** (`tests/normalize.test.ts`),
+plugin resolution and collision errors, plugin codecs
+(`tests/plugins.test.ts`), the editor lifecycle (mount, events, destroy,
+readOnly), undo/redo through the public API, `insertMarkdown`, and the
+manual-DOM command bodies.
+
+`vitest.config.ts` aliases the public package names — `edodo-write`,
+`edodo-write/react`, `edodo-write/plugins`, `edodo-write/testing` — to `src/`,
+so tests (and executable doc examples) import exactly what consumers import.
+
+If you touch parse/serialize, `tests/roundtrip.test.ts` and
+`tests/edge-cases.test.ts` are the guardrails. For plugin markdown pairs, use
+the codec helpers:
+
+```ts
+import { strict as assert } from "node:assert";
+import { createCodec, assertRoundTrip } from "edodo-write/testing";
+import { highlight } from "edodo-write/plugins";
+
+const codec = createCodec([highlight()]);
+assertRoundTrip(codec, "some ==highlighted== text"); // throws on divergence
+assert.ok(codec.parse("==hi==").includes("<mark>hi</mark>"));
+```
+
+### Stage 2 — Playwright E2E: everything interactive
+
+Run: `npm run test:e2e` (144 tests in 15 spec files, Chromium, ~22 s). The Vite
+dev server is started automatically by Playwright's `webServer` config (and
+reused if one is already running outside CI).
+
+Specs drive the **fixture page** `/e2e.html`, whose entry (`src/e2e/main.ts`)
+mounts a bare editor and accepts query params:
+
+```
+/e2e.html?value=<markdown>&plugins=highlight,callout&exclude=taskList
+```
+
+The instance is exposed as `window.editor`, so specs assert on
+`editor.getMarkdown()` — the value an application would store — rather than on
+screenshots. Shared helpers live in `tests/e2e/helpers.ts` (`openEditor`,
+`markdown`, `html`, `caretToEnd`, `selectBlockText`, `paste`, `interceptCopy`).
+
+This stage owns input rules driven by real typing, Enter/Backspace/Tab
+semantics, the slash menu, toolbar, link popover, block menu, drag, clipboard,
+select-all reset, read-only toggling, and undo/redo under real input events.
+
+**Both paths, always.** Every interactive feature is verified from two sides,
+and a feature is not covered until it has both:
+
+1. **The gesture path** — exactly what a user can do: hover the visible
+   affordance, click it, type. No `page.evaluate` caret plumbing, no
+   pre-arranged selection. This is what catches "the menu silently no-ops
+   when the caret isn't where the code assumed" — the class of bug API-driven
+   tests are structurally blind to.
+2. **The API path** — what an integrator calls: `editor.exec(...)`,
+   `setMarkdown`, `insertImages`, `setReadOnly`, run through `window.editor`
+   in the real browser and asserted on the same outcomes. This is what
+   catches regressions gestures never reach (payload handling, programmatic
+   flows, headless usage).
+
+Assert the SAME outcome from each side where both exist — divergence between
+the two paths is itself a bug.
+
+**Anti-flake rules** (the suite has zero retries locally — keep it that way):
+
+- Assert on `markdown(page)` (the source of truth). When the assertion follows
+  an *asynchronous* commit — a task-checkbox click commits in a microtask, the
+  `change` event is debounced ~120 ms — **poll on getMarkdown** instead of
+  sleeping: `await expect.poll(() => markdown(page)).toBe("- [x] first")`.
+- For UI chrome (toolbar visible, menu open), use auto-waiting locator
+  assertions: `await expect(page.locator(".ew-toolbar.is-visible"))…` — never
+  a bare `page.waitForTimeout`.
+- Place the caret with the helpers (`openEditor` clicks the first block;
+  `caretToEnd` / `selectBlockText` set ranges directly). Do not click into the
+  content's bottom padding — clicking below the last block *appends a
+  paragraph* by design.
+- Synthesize clipboard flavours with `paste()` / `interceptCopy()` rather than
+  touching the OS clipboard.
+
+### Stage 3 — Executable doc examples
+
+Run as part of Stage 1: `tests/docs-examples.test.ts` reads `README.md` and
+every `docs/*.md` at runtime, extracts every fenced code block tagged `ts` or
+`js`, and executes it under vitest+jsdom (each block is written verbatim to a
+temp module and imported, so the public-name aliases apply); blocks tagged
+`tsx` are compile-checked — one strict `ts.Program` against the shipped type
+declarations. The docs cannot silently rot: an API change that breaks a
+documented example fails the build.
+
+The contract for writing examples in `README.md` or any `docs/*.md`:
+
+- Self-contained and runnable: import everything from the **public package
+  names** (never `../src`), create your own host element, and end with at
+  least one assertion (`import { strict as assert } from "node:assert"`).
+- Blocks that cannot run use their proper tag (`bash`, `json`, `css`, `html`)
+  — those are not executed. A genuinely non-runnable TypeScript fragment is
+  tagged `ts no-run` — use sparingly.
+- Show Markdown-in/Markdown-out concretely: construct an editor with a
+  `value`, then assert the exact `editor.getMarkdown()` string.
+
+## The contentEditable invariants (learn these once)
+
+These are the hard-won rules. Breaking one silently corrupts documents — each
+was earned from a real bug. The normalizer (`normalize.ts`) enforces the
+structural ones after every mutation; the helpers in `dom.ts` (exposed to
+plugins as `ctx.dom`) encode the caret ones.
+
+1. **Block transforms use manual DOM, never `execCommand`.**
+   `execCommand('formatBlock' | 'insertUnorderedList' | …)` is *silently
+   dropped* by Chrome when called synchronously inside an `input` event —
+   exactly where input rules run. Inline marks (bold/italic/strike) may use
+   `execCommand` from the toolbar/keymap, which run outside `input`.
+2. **NBSP: a typed trailing space arrives as `U+00A0`.** The input-rule runner
+   normalises it before matching `"# "`, `"- "`, `"> "` …, and
+   `ctx.dom.textBeforeCaret` hands plugins pre-normalised text. The serializer
+   tidy maps NBSP back to a plain space in prose — never inside code fences.
+3. **ZWSP: zero-width spaces are editor-internal caret furniture.** They park
+   the caret outside a freshly inserted inline mark (Chrome would otherwise
+   keep typing inside the `<strong>`), anchor the caret after a task checkbox,
+   and anchor empty `<pre><code>` blocks. They are stripped on serialize and
+   excluded from every text/offset helper — they must never reach the Markdown.
+4. **`<br>` caret anchors: an empty element is not a placeable caret.** A block
+   with no child — or whose only children are *empty text nodes* (what
+   `Range.extractContents` leaves at a text-node boundary) — makes Chrome
+   insert typed text *before* it ("my typing goes into the previous block").
+   Normalise to a single `<br>` via `ensureNotEmpty` — except inside
+   `<pre><code>`, where a `<br>` would mean a newline, so the anchor is a ZWSP
+   text node instead.
+5. **Checkbox anchoring: task items are checkbox-first, then a text node.**
+   `deleteLeadingChars` anchors its range to the first *text* node — never
+   `(block, 0)` — so a leading checkbox is not swept into a trigger deletion,
+   and the normalizer keeps a text node after the box for the caret.
+6. **Convert before strip.** A block input rule must convert the still
+   non-empty block *first*, then delete the trigger text, then re-anchor the
+   caret — commands no-op on empty blocks. The whole sequence runs in one
+   `transact()` so no half-done state hits history. (Two deliberate
+   exceptions, `codeBlock` and `divider`, empty the block first so the trigger
+   text doesn't ride into the new block — see `preset.ts`.)
+7. **PRE newline terminator.** A trailing `"\n"` at the end of a `<pre>` is a
+   line *terminator* to the browser, not a new line — Chrome types the next
+   character before it. Enter in a code block inserts `"\n" + ZWSP` and places
+   the caret between them, making the new line real and placeable.
+8. **Unlink needs a selection.** `execCommand("unlink")` silently no-ops on a
+   collapsed caret — select the link's contents first (`applyLink` in
+   `commands.ts`). Similarly, `createLink` no-ops when collapsed and splits
+   the link on a partial selection, so editing an existing link updates its
+   `href` in place instead.
+9. **Always emit real block tags** (`<p>`, `<h1>`, `<li>`, `<blockquote>`),
+   never a `<div>` — that's why Enter/Backspace are intercepted in
+   `keymap.ts`, and why the normalizer converts any `<div>` that sneaks in.
+10. **Never transform mid-IME-composition.** Input rules skip while
+    `isComposing`; `compositionend` re-runs them. Firing on a partial
+    composition string corrupts CJK and dead-key input.
+
+## Build
+
+Vite, dual output:
+
+- `vite.lib.config.ts` → `dist-lib/` — four ESM entries (`index`, `react`,
+  `plugins`, `testing`), all dependencies externalised, one CSS file
+  (`edodo-write.css`); types via `tsc -p tsconfig.lib.json`. This is what npm
+  ships (`npm run build:pkg`).
+- `vite.config.ts` → `dist/` — the playground SPA for GitHub Pages
+  (`npm run build`). `prebuild` regenerates `public/llms*.txt` from `docs/`
+  (`node scripts/gen-llms-txt.mjs`).
+
+## Release
+
+```bash
+# 1. bump "version" in package.json (semver)
+# 2. update docs in the same change if behaviour changed
+npm run typecheck && npm test && npm run test:e2e   # must be green
+bash scripts/publish.sh --dry-run    # inspect the tarball
+bash scripts/publish.sh              # publish (token from ../edodo-draw/.env)
+git commit -am "…" && git push
+bash scripts/deploy-pages.sh         # optional: CI auto-deploys on push (below)
+```
+
+`scripts/publish.sh` reads `NPM_ACCESS_TOKEN` from `../edodo-draw/.env`, writes
+a temporary gitignored `.npmrc`, runs `npm publish --access public`, and
+removes the token file on exit. `prepublishOnly` builds the package first.
+
+## CI (freshness is enforced, not remembered)
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+1. **Test job** — typecheck, the full vitest suite (which includes the
+   `llms.txt` drift/determinism tests and the executed docs examples), and the
+   Playwright browser suite.
+2. **Deploy job** (master pushes only, after tests pass) — builds the site
+   (`prebuild` regenerates `public/llms*.txt` from `docs/` and FAILS on any
+   unlisted guide) and publishes `dist/` to GitHub Pages.
+
+Consequences: the live site — including `llms.txt` / `llms-full.txt` — can
+never lag the docs on master, and `npm publish` is gated by
+`prepublishOnly` (typecheck + vitest + package build), which also stamps the
+current corpus into the tarball root (`node_modules/edodo-write/llms-full.txt`).
+
+## Conventions
+
+- **Core is React-free.** React lives only in `src/lib/react.tsx`.
+- Imports use `.js` extensions (the bundler resolves them to `.ts`).
+- Keep modules small and single-purpose; shared DOM logic goes in `dom.ts`.
+- Built-in features go through the plugin API (`preset.ts`) — if the API can't
+  express your feature, improve the API rather than special-casing the core.
+- Update the relevant `docs/*.md` in the same change as the code — the docs
+  are the single source of truth, their examples are executed by the test
+  suite, and they are concatenated into `public/llms-full.txt` on every build.
+- Prefer adding a round-trip/edge-case test over a comment when fixing a
+  serialization bug.
+
+---
