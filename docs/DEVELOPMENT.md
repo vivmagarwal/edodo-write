@@ -142,6 +142,23 @@ This stage owns input rules driven by real typing, Enter/Backspace/Tab
 semantics, the slash menu, toolbar, link popover, block menu, drag, clipboard,
 select-all reset, read-only toggling, and undo/redo under real input events.
 
+**Both paths, always.** Every interactive feature is verified from two sides,
+and a feature is not covered until it has both:
+
+1. **The gesture path** — exactly what a user can do: hover the visible
+   affordance, click it, type. No `page.evaluate` caret plumbing, no
+   pre-arranged selection. This is what catches "the menu silently no-ops
+   when the caret isn't where the code assumed" — the class of bug API-driven
+   tests are structurally blind to.
+2. **The API path** — what an integrator calls: `editor.exec(...)`,
+   `setMarkdown`, `insertImages`, `setReadOnly`, run through `window.editor`
+   in the real browser and asserted on the same outcomes. This is what
+   catches regressions gestures never reach (payload handling, programmatic
+   flows, headless usage).
+
+Assert the SAME outcome from each side where both exist — divergence between
+the two paths is itself a bug.
+
 **Anti-flake rules** (the suite has zero retries locally — keep it that way):
 
 - Assert on `markdown(page)` (the source of truth). When the assertion follows

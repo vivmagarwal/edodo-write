@@ -189,3 +189,52 @@ test.describe("hover controls (the Notion-style authoring surface)", () => {
     expect(squash(await markdown(page))).toContain("| 1 |");
   });
 });
+
+test.describe("public API path (integrator surface — same outcomes as gestures)", () => {
+  test("editor.exec('table', {rows, cols}) builds the same GFM shape", async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(() => window.editor.exec("table", { rows: 2, cols: 3 }));
+    await page.keyboard.type("api"); // caret must land in the first header cell
+    const md = squash(await markdown(page));
+    expect(md).toContain("| api |");
+    expect(md).toContain("| --- | --- | --- |");
+    expect((await html(page)).match(/<tbody>[\s\S]*?<tr>/g)!.length).toBe(1);
+  });
+
+  test("gesture and API produce byte-identical documents", async ({ page }) => {
+    // Gesture: slash menu.
+    await openEditor(page);
+    await page.keyboard.type("/table");
+    await page.keyboard.press("Enter");
+    const viaGesture = await markdown(page);
+
+    // API: exec with the slash item's payload.
+    await openEditor(page);
+    await page.evaluate(() => window.editor.exec("table", { rows: 3, cols: 3 }));
+    const viaApi = await markdown(page);
+
+    expect(viaApi).toBe(viaGesture);
+  });
+
+  test("setMarkdown → structural gesture → getMarkdown round-trip", async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(() => window.editor.setMarkdown("| a | b |\n| --- | --- |\n| 1 | 2 |"));
+    await page.locator(".ew-content td").first().hover();
+    await page.locator(".ew-th-addcol").click();
+    await page.keyboard.type("mix");
+    const md = squash(await markdown(page));
+    expect(md).toContain("| a | b | mix |");
+    // and the produced markdown reloads to the same value (API again)
+    const once = await markdown(page);
+    await page.evaluate((m) => window.editor.setMarkdown(m), once);
+    expect(await markdown(page)).toBe(once);
+  });
+
+  test("exec('table') refuses in read-only mode", async ({ page }) => {
+    await openEditor(page, "frozen");
+    await page.evaluate(() => window.editor.setReadOnly(true));
+    const returned = await page.evaluate(() => window.editor.exec("table", {}));
+    expect(returned).toBe(false);
+    expect(await markdown(page)).toBe("frozen");
+  });
+});
