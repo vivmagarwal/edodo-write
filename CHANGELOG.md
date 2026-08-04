@@ -3,6 +3,18 @@
 All notable changes to `edodo-write` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## 0.9.3
+
+### Fixed
+
+- **The caret-in-view fix missed the case that prompted it.** 0.9.2 hooked
+  only `handleInput`, which is TYPING. Enter, Backspace, paste and commands
+  are structural and arrive at `afterMutation` instead — so pressing Enter
+  at the end of a document, the exact reported case, still left the caret on
+  the bottom edge. Both funnels now keep the caret in view. Measured in a
+  real embedded editor: two Enters at the end of a long document leave 56px
+  of visible space below the caret instead of 22px.
+
 ## 0.9.2
 
 The caret stays comfortably on screen.

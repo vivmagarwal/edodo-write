@@ -770,6 +770,12 @@ export class EdodoWrite {
     this.recordHistory();
     this.scheduleChange();
     this.handleSelectionChange();
+    // The other half of the caret-in-view hook. Typing arrives at
+    // handleInput; everything STRUCTURAL — Enter, Backspace, paste, a
+    // command — arrives here, and Enter at the end of a document is the
+    // exact case that prompted this. Missing this funnel is how the first
+    // attempt still left the caret on the bottom edge after Enter.
+    this.keepCaretVisible();
   }
 
   /** Re-establish the document schema; re-place the caret if it was reset. */
