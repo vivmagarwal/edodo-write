@@ -297,17 +297,57 @@ export function scrollRowIntoList(container: HTMLElement, row: HTMLElement | und
 
 // ── Positioning ─────────────────────────────────────────────────────────────
 
-function position(el: HTMLElement, anchor: HTMLElement | DOMRect, placement: "above" | "below"): void {
+/**
+ * Place a floating panel against an anchor, writing DOCUMENT coordinates onto
+ * an absolutely-positioned element.
+ *
+ * `placement` is the side the panel PREFERS. It flips to the opposite side
+ * when the preferred one cannot hold it, and clamps into the viewport when
+ * neither can. Both directions matter, and each has been a real bug:
+ *
+ *  - preferring "above" without a flip put a popover opened near the top of
+ *    the window off the top edge (this function already handled that one);
+ *  - preferring "below" without a flip put the slash menu off the BOTTOM
+ *    edge. That is the common case rather than an exotic one — an editor
+ *    pane of fixed height usually ends at the fold, so typing `/` on its
+ *    last line placed a 320px menu entirely below the viewport and the menu
+ *    simply appeared not to open.
+ *
+ * `el` must be measurable when this is called — laid out, not `display:
+ * none` — or its height reads 0 and nothing can be decided about which side
+ * fits. Callers that toggle visibility must reveal first, then position.
+ */
+export function position(
+  el: HTMLElement,
+  anchor: HTMLElement | DOMRect,
+  placement: "above" | "below",
+): void {
   const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
   const { width, height } = el.getBoundingClientRect();
-  const scrollX = window.scrollX;
-  const scrollY = window.scrollY;
-  let left = rect.left + scrollX;
-  left = Math.max(8 + scrollX, Math.min(left, scrollX + document.documentElement.clientWidth - width - 8));
-  let top = placement === "above"
-    ? rect.top + scrollY - height - 8
-    : rect.bottom + scrollY + 6;
-  if (top < scrollY + 8) top = rect.bottom + scrollY + 6;
-  el.style.left = `${Math.round(left)}px`;
-  el.style.top = `${Math.round(top)}px`;
+  const gap = 6;
+  const margin = 8;
+  const viewportW = document.documentElement.clientWidth;
+  const viewportH = document.documentElement.clientHeight;
+
+  // Everything below is viewport-relative; the scroll offset goes on last.
+  const left = Math.max(margin, Math.min(rect.left, viewportW - width - margin));
+
+  const above = rect.top - gap - height;
+  const below = rect.bottom + gap;
+  const fitsAbove = above >= margin;
+  const fitsBelow = below + height <= viewportH - margin;
+  let top =
+    placement === "above"
+      ? fitsAbove || !fitsBelow
+        ? above
+        : below
+      : fitsBelow || !fitsAbove
+        ? below
+        : above;
+  // Neither side fits — a panel taller than the window. Pin it inside the
+  // viewport so at least its top is reachable; it scrolls internally.
+  top = Math.max(margin, Math.min(top, viewportH - height - margin));
+
+  el.style.left = `${Math.round(left + window.scrollX)}px`;
+  el.style.top = `${Math.round(top + window.scrollY)}px`;
 }

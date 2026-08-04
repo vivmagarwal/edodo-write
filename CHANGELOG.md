@@ -3,6 +3,38 @@
 All notable changes to `edodo-write` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## 0.9.1
+
+Floating panels stay on screen.
+
+### Fixed
+
+- **The slash menu opened off-screen near the bottom of the window.** Its
+  positioner clamped horizontally but not vertically: it always dropped out of
+  the caret, so when the caret sat low in the viewport a 320px menu was written
+  out below the fold and simply appeared not to open. This is the ordinary case
+  rather than an exotic one — an editor pane of fixed height usually ends at
+  the fold, and `/` is reached for on the last line more than anywhere else.
+  The menu now flips above the caret when it will not fit below.
+- **The selection toolbar had the mirror-image bug** — selecting text on the
+  first line of a document positioned it off the top edge. It now drops below
+  the selection instead.
+- One positioner for every floating panel (`position` in `src/core/ui.ts`,
+  now exported), flipping in both directions and clamping into the viewport
+  when neither side fits. It replaces three near-duplicates that each got a
+  different subset of this right. The slash menu also reveals itself *before*
+  measuring — a `display: none` element reports 0×0, which is why the old code
+  had to hard-code its width and could not reason about its height at all.
+
+### Documented
+
+- **`--ew-bg` must be opaque.** The writing surface paints no background of
+  its own, so this token is read only by chrome that floats over text (slash
+  menu, popovers, drag ghost, table handles, docked toolbar). An embedder that
+  sets it to `transparent` to "blend into my form" changes nothing about the
+  writing area and instead makes every one of those panels see-through. Theme
+  it to your popover surface. Noted in `src/styles.css` beside the token.
+
 ## 0.9.0
 
 Composer ergonomics: everything needed to drop the editor into a comment box

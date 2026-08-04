@@ -14,7 +14,7 @@
  */
 
 import { currentBlock, currentListItem, selectionRect, deleteLeadingChars, textBeforeCaret } from "./dom.js";
-import { scrollRowIntoList } from "./ui.js";
+import { position, scrollRowIntoList } from "./ui.js";
 import { anchorCaret } from "./input-rules.js";
 import { guard } from "./plugin.js";
 import type { EditorContext, SlashItem } from "./types.js";
@@ -92,9 +92,14 @@ export class SlashMenu {
     this.mouseArmed = false;
     this.el.addEventListener("mousemove", () => { this.mouseArmed = true; }, { once: true });
     this.render();
-    this.position();
+    // Reveal BEFORE positioning: the menu is `display: none` until
+    // `is-visible`, and a hidden element measures 0×0 — which is exactly why
+    // the old positioner had to hard-code its width and could not reason
+    // about its height at all. Both happen in one task, so nothing paints
+    // between them and there is no flash at the previous position.
     this.open = true;
     this.el.classList.add("is-visible");
+    this.position();
   }
 
   private render(): void {
@@ -152,15 +157,21 @@ export class SlashMenu {
     if (active) this.el.setAttribute("aria-activedescendant", `ew-slash-${active.id}`);
   }
 
+  /**
+   * Drop out of the caret, flipping above it near the bottom of the window.
+   * Shared with every other floating panel (ui.ts `position`) rather than
+   * hand-rolled here: the hand-rolled version clamped the menu horizontally
+   * and not vertically, so on the last line of a fixed-height editor pane —
+   * which is where a writer reaches for `/` most often — the menu was placed
+   * entirely below the fold and looked like it had failed to open.
+   *
+   * Only ever called while the menu is visible, because `position` measures
+   * it to decide which side fits.
+   */
   private position(): void {
     const rect = selectionRect();
     if (!rect) return;
-    const top = rect.bottom + window.scrollY + 6;
-    let left = rect.left + window.scrollX;
-    const width = 280;
-    left = Math.min(left, window.scrollX + document.documentElement.clientWidth - width - 8);
-    this.el.style.left = `${Math.round(left)}px`;
-    this.el.style.top = `${Math.round(top)}px`;
+    position(this.el, rect, "below");
   }
 
   /** Returns true when the keydown was consumed by the open menu. */

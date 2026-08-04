@@ -17,6 +17,15 @@
   --ew-fg: #1f2328;
   --ew-fg-muted: #6b7280;
   --ew-fg-faint: #aab1ba;
+  /* MUST BE OPAQUE. The writing surface paints no background of its own —
+     `.ew` and `.ew-content` set none, so they show whatever the host puts
+     behind them — which means this token is read ONLY by chrome that floats
+     over text: the slash menu, the link/emoji popovers, the drag ghost, the
+     table handles and the docked toolbar. Setting it to `transparent` (a
+     natural-looking way to ask for "let the editor blend into my form")
+     therefore changes nothing about the writing area and instead makes every
+     one of those panels see-through and unreadable. Theme it to your
+     popover/menu surface, not to your page background. */
   --ew-bg: #ffffff;
   --ew-bg-subtle: #f6f7f8;
   --ew-border: #e6e8eb;

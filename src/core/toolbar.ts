@@ -17,6 +17,7 @@
 
 import type { EditorContext, SelectionInfo, ToolbarItem } from "./types.js";
 import { guard } from "./plugin.js";
+import { position } from "./ui.js";
 
 function buildButtons(
   el: HTMLElement,
@@ -83,16 +84,23 @@ export class SelectionToolbar {
     this.show(info.rect);
   }
 
+  /**
+   * Sit over the selection, dropping below it when there is no room above —
+   * selecting the first line of a document used to push the toolbar off the
+   * top of the window. `position` (ui.ts) owns the flip-and-clamp for every
+   * floating panel; the only thing special here is that the toolbar centres
+   * on the selection rather than starting at its left edge, so it is handed
+   * a zero-width rect at the selection's midpoint.
+   */
   private show(rect: DOMRect): void {
     this.el.classList.add("is-visible");
-    const { width, height } = this.el.getBoundingClientRect();
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    let left = rect.left + scrollX + rect.width / 2 - width / 2;
-    left = Math.max(8 + scrollX, Math.min(left, scrollX + document.documentElement.clientWidth - width - 8));
-    const top = rect.top + scrollY - height - 8;
-    this.el.style.left = `${Math.round(left)}px`;
-    this.el.style.top = `${Math.round(top)}px`;
+    const { width } = this.el.getBoundingClientRect();
+    const centre = rect.left + rect.width / 2 - width / 2;
+    position(
+      this.el,
+      new DOMRect(centre, rect.top, 0, rect.height),
+      "above",
+    );
   }
 
   hide(): void {
