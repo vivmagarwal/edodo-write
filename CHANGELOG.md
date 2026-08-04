@@ -3,6 +3,34 @@
 All notable changes to `edodo-write` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## 0.9.2
+
+The caret stays comfortably on screen.
+
+### Fixed
+
+- **Writing at the end of a document happened on the last visible pixel
+  row.** Browsers scroll a caret into view only just, so in an EMBEDDED
+  editor — one given a fixed box by its host, with no document-length bottom
+  padding to hide behind — the line being typed ended flush against the
+  bottom edge with nothing beneath it. Pressing Enter there gave no sense of
+  anywhere to go. Reported by an app embedding the editor: "when I move to
+  the last line and press Enter … the whole thing should scroll up so that
+  the user always sees the cursor and also a few more new lines below that."
+
+  Two halves, because either alone leaves a gap:
+  - `keepCaretInView` (exported from `src/core/ui.ts`) runs after every
+    input, once the DOM has settled — an Enter that created a block has only
+    just changed the document height. It pushes the caret away from whichever
+    edge it is near, and never asks a short box for more room than it has.
+  - the fill layout's content now carries real bottom padding (5rem, tunable
+    with `--ew-fill-bottom-pad`) plus `scroll-padding`, so there is somewhere
+    to scroll TO and browsers that honour scroll-padding do the right thing
+    natively.
+
+  Page layout is untouched: its content is not its own scroller and its 40vh
+  bottom padding already solved this.
+
 ## 0.9.1
 
 Floating panels stay on screen.

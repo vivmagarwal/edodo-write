@@ -36,7 +36,7 @@ import {
 import { normalizeDocument, isEffectivelyEmpty, visibleText } from "./normalize.js";
 import { corePreset } from "./preset.js";
 import { resolvePlugins, guard, type PluginRegistry } from "./plugin.js";
-import { EditorUIImpl } from "./ui.js";
+import { EditorUIImpl, keepCaretInView } from "./ui.js";
 import { openLinkEditor } from "./link-ui.js";
 import { toggleInlineTag, isInlineTagActive } from "./commands.js";
 import {
@@ -615,7 +615,22 @@ export class EdodoWrite {
     }
     this.updatePlaceholder();
     if (this.opts.slashMenu) this.slash?.sync();
+    // After the DOM has settled, not before: an Enter that created a block
+    // has only just changed the document's height, and a caret measured
+    // before that lands in the wrong place.
+    this.keepCaretVisible();
     this.scheduleChange();
+  }
+
+  /**
+   * Keep what you are writing comfortably on screen. `.ew-content` is its
+   * own scroller in fill layout, so this is the box to move; in page layout
+   * the content is not scrollable and the browser (plus the document-length
+   * bottom padding) already does the right thing, so this no-ops.
+   */
+  private keepCaretVisible(): void {
+    if (this.content.scrollHeight <= this.content.clientHeight) return;
+    keepCaretInView(this.content);
   }
 
   /**

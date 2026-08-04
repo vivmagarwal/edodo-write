@@ -115,9 +115,18 @@
   max-width: none;
   margin: 0;
   min-height: 0;
-  /* 2.5rem: the 37px handle + its 2px text gap must fit (page mode: 2.75rem) */
-  padding: 0.375rem 0.5rem 0.75rem 2.5rem;
+  /* 2.5rem: the 37px handle + its 2px text gap must fit (page mode: 2.75rem).
+     The bottom pad is SCROLL ROOM, and it is why writing at the end of a
+     document does not happen on the last visible pixel row: it guarantees a
+     couple of blank lines under the final one, which is what page mode gets
+     from its 40vh. `--ew-fill-bottom-pad` so a host with a very short box
+     can trade some of it back. */
+  padding: 0.375rem 0.5rem var(--ew-fill-bottom-pad, 5rem) 2.5rem;
   overflow-y: auto;
+  /* Belt to the keepCaretInView braces: browsers that honour scroll-margin
+     when they scroll the caret themselves keep it off the edge for free. */
+  scroll-padding-bottom: 3.5rem;
+  scroll-padding-top: 1rem;
 }
 .ew--fill .ew-content--readonly { padding-left: 0.5rem; }
 

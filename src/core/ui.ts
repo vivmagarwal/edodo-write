@@ -284,6 +284,60 @@ export function buildFieldForm(
   setTimeout(() => inputs.values().next().value?.focus(), 0);
 }
 
+/**
+ * Keep the caret comfortably inside its own scroller — never at the very
+ * edge, and never below the fold.
+ *
+ * Browsers do scroll a caret into view while you type, but only just: the
+ * line you are writing ends up flush against the bottom of the box, with
+ * nothing visible beneath it. In a page-height editor the document-length
+ * bottom padding hides that. In an embedded one — a composer given a fixed
+ * box by its host — there is no such padding, and writing at the end of a
+ * document means writing on the last visible pixel row. Reported against an
+ * app embedding this editor:
+ *
+ *   "when I move to the last line and press Enter … ideally the whole thing
+ *    should scroll up so that the user always sees the cursor and also a few
+ *    more new lines below that."
+ *
+ * `margin` is that breathing room, in pixels. The caret is pushed away from
+ * whichever edge it is near; if the box is too short to honour the margin on
+ * both sides at once, being able to SEE the caret wins.
+ *
+ * Native browser behaviour is deliberately left in place — this only ever
+ * scrolls further, never fights it, and does nothing when the caret is
+ * already comfortable.
+ */
+export function keepCaretInView(scroller: HTMLElement, margin = 56): void {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  if (!scroller.contains(range.startContainer)) return;
+
+  // A collapsed range at a block boundary can measure 0×0; the closest
+  // element's box is the honest fallback for "where the caret is".
+  let rect = range.getBoundingClientRect();
+  if (rect.height === 0) {
+    const node =
+      range.startContainer.nodeType === 1
+        ? (range.startContainer as HTMLElement)
+        : range.startContainer.parentElement;
+    const fallback = node?.getBoundingClientRect();
+    if (!fallback || fallback.height === 0) return;
+    rect = fallback;
+  }
+
+  const box = scroller.getBoundingClientRect();
+  // Never demand more room than the box can give, or a short editor would
+  // scroll forever trying to satisfy both margins.
+  const room = Math.max(0, Math.min(margin, (box.height - rect.height) / 2));
+
+  const below = rect.bottom - (box.bottom - room);
+  const above = box.top + room - rect.top;
+  if (below > 0) scroller.scrollTop += below;
+  else if (above > 0) scroller.scrollTop -= above;
+}
+
 /** Scroll a row into view WITHIN its list container only — never the page. */
 export function scrollRowIntoList(container: HTMLElement, row: HTMLElement | undefined): void {
   if (!row) return;
