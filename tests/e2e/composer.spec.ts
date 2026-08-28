@@ -224,3 +224,69 @@ test.describe("v0.9.0 review regressions", () => {
     await expect(page.locator(".ew-fixed-toolbar")).toHaveCount(0);
   });
 });
+
+test.describe("submitOn: the composer's submit key", () => {
+  const submits = (page: Page) => page.evaluate(() => window.submits);
+
+  test('"enter": Enter submits and adds nothing; Shift+Enter breaks a line', async ({ page }) => {
+    await openFixture(page, "?submit=enter&layout=fill");
+    await page.keyboard.type("hello");
+    await page.keyboard.press("Enter");
+    expect(await submits(page)).toBe(1);
+    expect(await markdown(page)).toBe("hello");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("world");
+    expect(await submits(page)).toBe(1);
+    await expect.poll(() => markdown(page)).toBe("hello\\\nworld");
+  });
+
+  test('"enter": a list keeps Enter for the next bullet; an empty bullet exits; then Enter submits', async ({ page }) => {
+    await openFixture(page, "?submit=enter&layout=fill");
+    await page.keyboard.type("- one");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("two");
+    expect(await submits(page)).toBe(0);
+    await expect.poll(() => markdown(page)).toBe("- one\n- two");
+    await page.keyboard.press("Enter"); // empty bullet
+    await page.keyboard.press("Enter"); // exits the list → paragraph
+    expect(await submits(page)).toBe(0);
+    await page.keyboard.type("done");
+    await page.keyboard.press("Enter");
+    expect(await submits(page)).toBe(1);
+    await expect.poll(() => markdown(page)).toBe("- one\n- two\n\ndone");
+  });
+
+  test('"enter": inside a code block Enter is a newline; ⌘Enter submits from anywhere', async ({ page }) => {
+    await openFixture(page, "?submit=enter&layout=fill");
+    await page.keyboard.type("```");
+    await page.keyboard.type("a");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("b");
+    expect(await submits(page)).toBe(0);
+    await expect.poll(() => markdown(page)).toBe("```\na\nb\n```");
+    await page.keyboard.press("ControlOrMeta+Enter");
+    expect(await submits(page)).toBe(1);
+  });
+
+  test('"enter" with a mention menu open: Enter picks the item, the NEXT Enter submits', async ({ page }) => {
+    await openFixture(page, "?submit=enter&layout=fill&plugins=mentions");
+    await page.keyboard.type("hi @vi");
+    await expect(page.locator(".ew-popover.ew-menu")).toBeVisible();
+    await page.keyboard.press("Enter");
+    expect(await submits(page)).toBe(0);
+    await expect.poll(() => markdown(page)).toBe("hi [@vivek](https://example.com/users/vivek)");
+    await page.keyboard.press("Enter");
+    expect(await submits(page)).toBe(1);
+  });
+
+  test('"mod-enter": plain Enter is a new paragraph; ⌘Enter submits', async ({ page }) => {
+    await openFixture(page, "?submit=mod-enter&layout=fill");
+    await page.keyboard.type("hello");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("more");
+    expect(await submits(page)).toBe(0);
+    await expect.poll(() => markdown(page)).toBe("hello\n\nmore");
+    await page.keyboard.press("ControlOrMeta+Enter");
+    expect(await submits(page)).toBe(1);
+  });
+});

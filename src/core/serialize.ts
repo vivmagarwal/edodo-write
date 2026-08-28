@@ -162,7 +162,20 @@ export function tidyMarkdown(md: string): string {
 
 export function createMarkdownSerializer(extensions: SerializerExtension[] = []): (html: string) => string {
   const service = createTurndownService(extensions);
-  return (html: string) => tidyMarkdown(service.turndown(html || ""));
+  return (html: string) => tidyMarkdown(service.turndown(stripCaretFurniture(html || "")));
+}
+
+/**
+ * Zero-width spaces are caret furniture (they park the caret outside a fresh
+ * inline mark or after a soft break) and must never reach the Markdown. They
+ * have to go BEFORE turndown sees the HTML, not only in the tidy pass after:
+ * turndown escapes a block marker at the start of a text node (`\- x`) by
+ * looking at the node's first character, so a leading ZWSP hid the marker,
+ * the tidy pass then removed the ZWSP, and `- Chapter one` landed at a line
+ * start unescaped — a paragraph line came back as a bullet on reload.
+ */
+function stripCaretFurniture(html: string): string {
+  return html.split(String.fromCharCode(0x200b)).join("");
 }
 
 const defaultSerialize = /* lazily */ (() => {

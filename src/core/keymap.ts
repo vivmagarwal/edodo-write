@@ -29,12 +29,14 @@ import {
 } from "./dom.js";
 import { makeTaskItem } from "./commands.js";
 import { guard, matchesKey, type ResolvedKeyBinding } from "./plugin.js";
-import type { EditorContext } from "./types.js";
+import type { EditorContext, SubmitKey } from "./types.js";
 
 export interface KeymapHandlers {
   notify: () => void;
   undo: () => void;
   redo: () => void;
+  /** Composer submit (EditorOptions.submitOn); absent for document editors. */
+  submit?: { on: SubmitKey; fire: () => void };
 }
 
 const ZWSP = String.fromCharCode(0x200b);
@@ -56,6 +58,25 @@ export function handleKeydown(
     });
     if (handled) {
       e.preventDefault();
+      return true;
+    }
+  }
+
+  // Tier 1.5: the composer's submit key — after every plugin binding (a
+  // mention menu's Enter has just declined), before the structural engine
+  // takes Enter as "new block". Never mid-IME (the key belongs to the IME).
+  if (h.submit && e.key === "Enter" && !e.isComposing && !e.altKey && !e.shiftKey) {
+    const withMod = e.metaKey || e.ctrlKey;
+    const fires =
+      h.submit.on === "mod-enter"
+        ? withMod
+        // Plain Enter submits unless the caret sits where Enter has structural
+        // meaning (a list item: next bullet; a code block: next line). ⌘/Ctrl
+        // +Enter submits from anywhere.
+        : withMod || !caretInStructuralBlock(root);
+    if (fires) {
+      e.preventDefault();
+      h.submit.fire();
       return true;
     }
   }
@@ -85,6 +106,15 @@ export function handleKeydown(
     if (handleTab(root, e.shiftKey)) { e.preventDefault(); h.notify(); return true; }
   }
   return false;
+}
+
+/** Is the caret inside a list item or a code block — where Enter is structure? */
+function caretInStructuralBlock(root: HTMLElement): boolean {
+  const range = getRange();
+  const anchor = range?.startContainer ?? null;
+  const el = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+  if (!el || !root.contains(el)) return false;
+  return el.closest("li, pre") !== null;
 }
 
 // ── Enter ──────────────────────────────────────────────────────────────────

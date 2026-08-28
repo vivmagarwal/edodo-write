@@ -44,6 +44,8 @@ editor.destroy();
 | `className` | `string` | — | Extra class(es) on the host. |
 | `ariaLabel` | `string` | — | ARIA label for the editable region. |
 | `onChange` | `(md: string) => void` | — | Convenience `change` listener. |
+| `submitOn` | `"enter" \| "mod-enter" \| false` | `false` | Make a key submit a **composer** (chat input, comment box). `"enter"`: Enter submits, Shift+Enter breaks a line, and Enter keeps its structural meaning inside a list item (next bullet) or code block (next line) — where ⌘/Ctrl+Enter still submits. `"mod-enter"`: only ⌘/Ctrl+Enter submits. Plugin bindings run first (a mention menu's Enter picks, and only the next Enter submits); a composing IME Enter never submits. Fires the `submit` event; the pending debounced `change` is flushed first. |
+| `onSubmit` | `(editor) => void` | — | Convenience `submit` listener. |
 | `uploadImage` | `ImageUploader` | data-URL embed | Where pasted / dropped / picked image files go: `(file, editor) => Promise<url \| { src, alt? }>`; the resolved URL is what lands in the Markdown. Omitted, images embed as `data:` URLs. See **[Image hosting](IMAGE_HOSTING.md)**. |
 | `plugins` | `EdodoPlugin[]` | `[]` | Plugins, applied in order after the core preset. Resolved **once at construction** — create a new editor to change the set. Name/command/item-id collisions throw. |
 | `exclude` | `string[]` | `[]` | Core-preset feature keys (command names / item ids) to remove, e.g. `["taskList", "codeBlock"]`. Only affects the core preset, never plugins. |
@@ -93,6 +95,7 @@ editor.destroy();
 | Event | Payload | When |
 |---|---|---|
 | `change` | `(markdown: string)` | Debounced (~120 ms) after edits; `undo`/`redo` deliver it synchronously. |
+| `submit` | `() => void` | The `submitOn` key was pressed (see Options). Not fired for document editors (`submitOn` off). |
 | `selection` | `(info: SelectionInfo \| null)` | Selection moved; `null` when it leaves the editor. |
 | `focus` / `blur` | — | The editable region gained/lost focus. |
 
@@ -498,7 +501,34 @@ editor.destroy();
 `"fill"` drops the page opinions — no centered `max-width` column, no `40vh`
 bottom pad — and lays the host out as a flex column, so the fixed toolbar
 docks on top and the content area stretches to whatever height the box has
-(scrolling internally when the text outgrows it). The fixed toolbar reflects
+(scrolling internally when the text outgrows it).
+
+A chat composer also wants **Enter to send**. That is the third dial:
+
+```ts
+import { EdodoWrite } from "edodo-write";
+import { strict as assert } from "node:assert";
+
+const box = document.createElement("div");
+document.body.appendChild(box);
+const sent: string[] = [];
+const composer = new EdodoWrite(box, {
+  layout: "fill",
+  submitOn: "enter",                       // Enter sends; Shift+Enter is a new line
+  onSubmit: (ed) => { sent.push(ed.getMarkdown()); ed.setMarkdown(""); },
+});
+composer.setMarkdown("hello");
+composer.content.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+assert.deepEqual(sent, ["hello"]);
+assert.equal(composer.getMarkdown(), "");
+composer.destroy();
+```
+
+Inside a list item Enter still adds the next bullet and inside a code block
+it still adds a line (Slack's exceptions) — ⌘/Ctrl+Enter sends from anywhere.
+A mention or emoji menu that is open takes the Enter to pick its item; only
+the next Enter sends. Prefer `"mod-enter"` for comment boxes where multi-line
+replies are the norm. The fixed toolbar reflects
 formatting **at the caret** (no selection needed), disables itself in
 read-only mode, and draws from the same registry as the floating bar — items
 contributed by plugins appear automatically, and `items` picks and orders the

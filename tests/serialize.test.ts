@@ -2,6 +2,17 @@ import { describe, it, expect } from "vitest";
 import { htmlToMarkdown } from "@core/serialize";
 
 describe("htmlToMarkdown", () => {
+  it("a zero-width space cannot smuggle a block marker to a line start", () => {
+    // Regression: the ZWSP that parks the caret after a soft break defeated
+    // turndown's line-start escape, and the tidy pass stripped it afterwards
+    // — "Reading list:" + Shift+Enter + "- Chapter one" reloaded as a bullet.
+    const Z = String.fromCharCode(0x200b);
+    expect(htmlToMarkdown(`<p>Reading list:<br>${Z}- Chapter one</p>`)).toBe("Reading list:\\\n\\- Chapter one");
+    expect(htmlToMarkdown(`<p>Note<br>${Z}1. step</p>`)).toBe("Note\\\n1\\. step");
+    expect(htmlToMarkdown(`<p>Quote<br>${Z}&gt; not a quote</p>`)).toBe("Quote\\\n\\> not a quote");
+    expect(htmlToMarkdown(`<p>${Z}- lead</p>`)).toBe("\\- lead");
+  });
+
   it("serialises headings", () => {
     expect(htmlToMarkdown("<h1>Hello</h1>")).toBe("# Hello");
     expect(htmlToMarkdown("<h2>Two</h2>")).toBe("## Two");

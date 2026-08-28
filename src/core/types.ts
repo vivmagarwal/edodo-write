@@ -357,7 +357,19 @@ export interface EditorEvents {
   selection: (info: SelectionInfo | null) => void;
   focus: () => void;
   blur: () => void;
+  /** Fired by the `submitOn` key (see EditorOptions.submitOn). */
+  submit: () => void;
 }
+
+/**
+ * Which key submits (chat / comment composers). `"enter"`: Enter submits,
+ * Shift+Enter breaks a line, and Enter keeps its structural meaning inside a
+ * list item or code block (next item / next line — Slack semantics), where
+ * ⌘/Ctrl+Enter still submits. `"mod-enter"`: only ⌘/Ctrl+Enter submits.
+ * Plugin bindings (a mention menu's Enter) always run first, and a composing
+ * IME Enter never submits.
+ */
+export type SubmitKey = "enter" | "mod-enter";
 
 export type EditorEventName = keyof EditorEvents;
 
@@ -429,6 +441,13 @@ export interface ToolbarConfig {
 export interface EditorOptions {
   /** Initial Markdown value. */
   value?: string;
+  /**
+   * Make a key submit the composer (fires the `submit` event + `onSubmit`).
+   * Off by default — a document editor has no submit. See SubmitKey.
+   */
+  submitOn?: SubmitKey | false;
+  /** Convenience `submit` listener. */
+  onSubmit?: (editor: EdodoWrite) => void;
   /** Placeholder shown when the document is empty. */
   placeholder?: string;
   /** Focus the editor after mounting. */

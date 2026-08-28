@@ -338,6 +338,7 @@ database, an API, or a static list. The source *is* the configurability.
 | `source` | `(query) => TagItem[] \| Promise<TagItem[]>` | — (required) | Suggestions for the typed query. Sync or async; stale async results are discarded (race-safe). |
 | `href` | `(item) => string \| null` | — | Derive an href for items without one (`null` → plain-text tag). |
 | `allowCreate` | `boolean` | `true` | Offer *Create #query* when nothing matches. |
+| `allowSpaces` | `number` | `0` | How many spaces the query may contain while the source keeps matching. Hashtags want `0` (the token ends at the first space). Mentions over display names want `1`: "@QA Bob" typed in full still completes, and the menu closes on the first space after which the source returns nothing — Slack semantics. |
 
 A `TagItem` is `{ label, href?, hint?, id? }`. Arrow keys navigate, Enter or
 click picks, Escape closes; the menu never opens inside code blocks and is

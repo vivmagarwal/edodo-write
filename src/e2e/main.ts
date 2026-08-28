@@ -13,6 +13,8 @@
  *   ?layout=fill        fill layout (default: page)
  *   ?toolbar=fixed|none toolbar mode (default: floating); ?toolbarItems=a,b
  *                       picks the buttons.
+ *   ?submit=enter|mod-enter  composer submit key; every fire increments
+ *                       `window.submits`.
  */
 import "../styles.css";
 import { EdodoWrite, type EdodoPlugin, type ImageUploader, type ToolbarConfig } from "../lib/index.js";
@@ -22,6 +24,7 @@ declare global {
   interface Window {
     editor: EdodoWrite;
     EdodoWrite: typeof EdodoWrite;
+    submits: number;
   }
 }
 
@@ -72,6 +75,24 @@ const AVAILABLE: Record<string, () => EdodoPlugin> = {
   embeds: () => embeds(),
   // Default (built-in) map — the zero-config path users get.
   emoji: () => emoji(),
+  // Mentions over multi-word display names — the Slack case: the query may
+  // carry ONE space ("QA B" still matches "QA Bob").
+  people: () =>
+    tags({
+      name: "people",
+      trigger: "@",
+      allowCreate: false,
+      allowSpaces: 1,
+      source: (query: string) => {
+        const all = [
+          { label: "QA Alice", href: "https://example.com/u/alice" },
+          { label: "QA Bob", href: "https://example.com/u/bob" },
+          { label: "Vivek Agarwal", href: "https://example.com/u/vivek" },
+        ];
+        const q = query.trim().toLowerCase();
+        return all.filter((t) => t.label.toLowerCase().startsWith(q));
+      },
+    }),
 };
 
 const params = new URLSearchParams(location.search);
@@ -106,6 +127,10 @@ if (toolbarMode === "fixed" || toolbarMode === "none" || toolbarMode === "floati
   toolbar = { mode: toolbarMode, items: toolbarItems.length ? toolbarItems : undefined };
 }
 
+const submitMode = params.get("submit");
+const submitOn = submitMode === "enter" || submitMode === "mod-enter" ? submitMode : undefined;
+window.submits = 0;
+
 const host = document.getElementById("host")!;
 window.EdodoWrite = EdodoWrite;
 window.editor = new EdodoWrite(host, {
@@ -116,4 +141,6 @@ window.editor = new EdodoWrite(host, {
   uploadImage,
   layout: params.get("layout") === "fill" ? "fill" : undefined,
   toolbar,
+  submitOn,
+  onSubmit: () => { window.submits += 1; },
 });

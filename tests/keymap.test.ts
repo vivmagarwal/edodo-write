@@ -421,3 +421,84 @@ describe("Enter inside blockquotes (block-level <p> children)", () => {
     ed.destroy();
   });
 });
+
+// ── submitOn: the composer's submit key ─────────────────────────────────────
+
+describe("submitOn (composer submit key)", () => {
+  function mountComposer(value: string, submitOn: "enter" | "mod-enter") {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const fired: number[] = [];
+    const ed = new EdodoWrite(host, {
+      value, toolbar: false, slashMenu: false, submitOn,
+      onSubmit: () => fired.push(1),
+    });
+    editors.push(ed);
+    return { ed, fired };
+  }
+
+  it("Enter fires submit and inserts nothing; Shift+Enter is a soft break", () => {
+    const { ed, fired } = mountComposer("hello", "enter");
+    const p = ed.content.querySelector("p")!;
+    caretAtEnd(p.firstChild!);
+    expect(press(ed, "Enter")).toBe(true);
+    expect(fired).toHaveLength(1);
+    expect(ed.content.querySelectorAll("p")).toHaveLength(1); // no new block
+    caretAtEnd(p.firstChild!);
+    press(ed, "Enter", { shiftKey: true });
+    expect(fired).toHaveLength(1); // a soft break, not a submit
+    expect(ed.content.querySelector("p br")).not.toBeNull();
+    expect(ed.content.querySelectorAll("p")).toHaveLength(1);
+  });
+
+  it("Enter keeps its structural meaning inside a list item and a code block; ⌘Enter still submits", () => {
+    const { ed, fired } = mountComposer("- item", "enter");
+    const li = ed.content.querySelector("li")!;
+    caretAtEnd(li.firstChild!);
+    expect(press(ed, "Enter")).toBe(true);
+    expect(fired).toHaveLength(0);
+    expect(ed.content.querySelectorAll("li")).toHaveLength(2); // next bullet
+    caretAtEnd(ed.content.querySelectorAll("li")[1]!);
+    press(ed, "Enter", { metaKey: true });
+    expect(fired).toHaveLength(1);
+
+    const code = mountComposer("```\nx\n```", "enter");
+    const codeEl = code.ed.content.querySelector("pre code")!;
+    caretAtEnd(codeEl.firstChild!);
+    press(code.ed, "Enter");
+    expect(code.fired).toHaveLength(0);
+    expect(codeEl.textContent).toContain("\n"); // next line
+  });
+
+  it('"mod-enter": only ⌘/Ctrl+Enter submits; plain Enter is a new block', () => {
+    const { ed, fired } = mountComposer("hello", "mod-enter");
+    const p = ed.content.querySelector("p")!;
+    caretAtEnd(p.firstChild!);
+    press(ed, "Enter");
+    expect(fired).toHaveLength(0);
+    expect(ed.content.querySelectorAll("p")).toHaveLength(2);
+    press(ed, "Enter", { ctrlKey: true });
+    expect(fired).toHaveLength(1);
+  });
+
+  it("a composing IME Enter never submits", () => {
+    const { ed, fired } = mountComposer("hello", "enter");
+    caretAtEnd(ed.content.querySelector("p")!.firstChild!);
+    const ev = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, isComposing: true });
+    ed.content.dispatchEvent(ev);
+    expect(fired).toHaveLength(0);
+  });
+
+  it("submit flushes the debounced change first, so the host sees the final keystroke", () => {
+    const { ed, fired } = mountComposer("", "enter");
+    const changes: string[] = [];
+    ed.on("change", (md) => changes.push(md));
+    const p = ed.content.querySelector("p")!;
+    p.textContent = "typed fast";
+    caretAtEnd(p.firstChild!);
+    ed.content.dispatchEvent(new Event("input", { bubbles: true })); // change is now pending (120ms)
+    press(ed, "Enter");
+    expect(fired).toHaveLength(1);
+    expect(changes.at(-1)).toBe("typed fast");
+  });
+});

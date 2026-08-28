@@ -63,7 +63,7 @@ interface Snapshot { md: string; caret: number; }
 export class EdodoWrite {
   readonly host: HTMLElement;
   readonly content: HTMLElement;
-  private opts: Required<Pick<EditorOptions, "placeholder" | "slashMenu" | "spellcheck" | "readOnly">>;
+  private opts: Required<Pick<EditorOptions, "placeholder" | "slashMenu" | "spellcheck" | "readOnly" | "submitOn">>;
   private toolbarCfg: ToolbarConfig;
   private registry: PluginRegistry;
   private pipeline: MarkdownPipeline;
@@ -78,7 +78,7 @@ export class EdodoWrite {
   private tableControls: TableControls | null = null;
   private pluginCleanups: Array<() => void> = [];
   private listeners: { [K in EditorEventName]: Set<EditorEvents[K]> } = {
-    change: new Set(), selection: new Set(), focus: new Set(), blur: new Set(),
+    change: new Set(), selection: new Set(), focus: new Set(), blur: new Set(), submit: new Set(),
   };
   private changeTimer: ReturnType<typeof setTimeout> | null = null;
   private applying = false;
@@ -156,6 +156,7 @@ export class EdodoWrite {
       slashMenu: options.slashMenu ?? true,
       spellcheck: options.spellcheck ?? true,
       readOnly: options.readOnly ?? false,
+      submitOn: options.submitOn ?? false,
     };
     this.toolbarCfg = normalizeToolbar(options.toolbar);
     this.uploader = options.uploadImage;
@@ -197,6 +198,7 @@ export class EdodoWrite {
     this.seedHistory();
 
     if (options.onChange) this.on("change", options.onChange);
+    if (options.onSubmit) this.on("submit", () => options.onSubmit!(this));
 
     // Chrome (all editing UI) is created and listeners are attached
     // unconditionally; behavior is gated on the LIVE readOnly flag so
@@ -546,7 +548,7 @@ export class EdodoWrite {
     if (this.changeTimer) clearTimeout(this.changeTimer);
     this.host.classList.remove("ew--fill");
     this.content.remove();
-    (["change", "selection", "focus", "blur"] as EditorEventName[]).forEach((e) => this.listeners[e].clear());
+    (["change", "selection", "focus", "blur", "submit"] as EditorEventName[]).forEach((e) => this.listeners[e].clear());
   }
 
   // ── Context & plugin wiring ─────────────────────────────────────────────────
@@ -677,7 +679,26 @@ export class EdodoWrite {
       notify: () => this.afterMutation(),
       undo: () => this.undo(),
       redo: () => this.redo(),
+      submit: this.opts.submitOn
+        ? { on: this.opts.submitOn, fire: () => this.fireSubmit() }
+        : undefined,
     }, this.registry.keymap, this.ctx);
+  }
+
+  /**
+   * The composer's submit key was pressed (EditorOptions.submitOn). Flush the
+   * debounced change first so a host reading its own state — not
+   * `getMarkdown()` — sees the final keystroke rather than the one before it.
+   */
+  private fireSubmit(): void {
+    if (this.changeTimer) {
+      clearTimeout(this.changeTimer);
+      this.changeTimer = null;
+      this.recordHistory();
+      const md = this.getMarkdown();
+      this.listeners.change.forEach((fn) => fn(md));
+    }
+    this.listeners.submit.forEach((fn) => fn());
   }
 
   private handleClick(e: MouseEvent): void {

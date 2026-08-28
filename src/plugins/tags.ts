@@ -70,6 +70,13 @@ export interface TagsOptions {
   /** Offer "Create #query" when nothing matches. Default: true. */
   allowCreate?: boolean;
   /**
+   * How many spaces the query may contain while the source keeps matching.
+   * Default 0: the token ends at the first space (hashtags). Mentions want 1
+   * so "@QA Bob" typed in full still completes — the menu closes on the first
+   * space after which the source returns nothing (Slack semantics).
+   */
+  allowSpaces?: number;
+  /**
    * Plugin instance name. Default: "tags". Give each instance a distinct
    * name to run several together (e.g. "#" tags plus "@" mentions).
    */
@@ -127,10 +134,15 @@ function escapeRegExp(s: string): string {
 export function tags(options: TagsOptions): EdodoPlugin {
   const trigger = options.trigger ?? "#";
   const allowCreate = options.allowCreate ?? true;
+  const allowSpaces = Math.max(0, options.allowSpaces ?? 0);
   // Trigger at a block start or after whitespace, query = word chars/hyphens
-  // up to the caret. Runs against ctx.dom.textBeforeCaret, which is already
-  // NBSP-normalized and ZWSP-free.
-  const triggerRe = new RegExp(`(^|\\s)${escapeRegExp(trigger)}([\\w-]*)$`);
+  // up to the caret — plus up to `allowSpaces` single spaces between words.
+  // Runs against ctx.dom.textBeforeCaret, which is already NBSP-normalized
+  // and ZWSP-free.
+  const word = "[\\w-]*";
+  const triggerRe = new RegExp(
+    `(^|\\s)${escapeRegExp(trigger)}(${word}(?: ${word}){0,${allowSpaces}})$`,
+  );
 
   let state: MenuState | null = null;
   let seq = 0; // async-source ticket: stale resolutions are discarded

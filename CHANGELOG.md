@@ -3,6 +3,42 @@
 All notable changes to `edodo-write` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## 0.10.0
+
+Composer ergonomics, round two — driven by embedding the editor as a Slack-style
+chat input (edodo Tribe) and finding three things the host had to work around.
+
+### Added
+
+- **`submitOn: "enter" | "mod-enter"` + the `submit` event / `onSubmit`.** A
+  composer's Enter-to-send is now a core option instead of a host-written
+  keymap plugin: Enter submits, Shift+Enter breaks a line, Enter keeps its
+  structural meaning inside a list item (next bullet) and a code block (next
+  line) where ⌘/Ctrl+Enter still submits, a mention/emoji menu's Enter picks
+  before anything submits, and a composing IME Enter never submits. The
+  pending debounced `change` is flushed before `submit` fires, so a host that
+  reads its own state sees the final keystroke. React: `onSubmit` prop.
+- **`tags({ allowSpaces })`.** A mention query may span up to N spaces while
+  the source keeps matching — "@QA Bob" typed in full completes; the menu
+  closes on the first space after which nothing matches. Default `0` keeps
+  hashtags unchanged.
+
+### Fixed
+
+- **A soft break before a list marker came back as a list.** The zero-width
+  space that parks the caret after Shift+Enter sat at the start of the next
+  text node, so turndown's line-start escape never saw `- ` (or `1. `, `> `,
+  `# `); the tidy pass then stripped the ZWSP and the marker landed at a line
+  start unescaped — "Reading list:" ⏎ "- Chapter one" reloaded as a bullet
+  under a paragraph ending in a literal `\`. Caret furniture is now stripped
+  BEFORE turndown runs. Regression tests cover all four markers.
+- **The emoji plugin hid every bare URL.** Its marked extension's `start`
+  hook was `src.indexOf(":")`, which halted the inline lexer at the colon of
+  `https:` and split the text token — so any codec with `emoji()` (either
+  stored form) rendered links as plain text. `start` now stops only at a
+  plausible shortcode (`:[a-z0-9_+-]+:`). Regression test: a URL and a
+  shortcode in one line both render.
+
 ## 0.9.3
 
 ### Fixed

@@ -24,6 +24,9 @@ export interface EdodoWriteEditorProps
   value?: string;
   onChange?: (markdown: string) => void;
   onSelection?: (info: SelectionInfo | null) => void;
+  /** The `submitOn` key was pressed (see EditorOptions.submitOn). Latest-ref
+   *  like onChange: the handler may close over the host's current state. */
+  onSubmit?: (editor: EdodoWrite) => void;
   /** Imperative handle to the underlying editor, once mounted. */
   onReady?: (editor: EdodoWrite) => void;
   className?: string;
@@ -34,6 +37,7 @@ export function EdodoWriteEditor({
   value = "",
   onChange,
   onSelection,
+  onSubmit,
   onReady,
   className,
   style,
@@ -44,8 +48,10 @@ export function EdodoWriteEditor({
   const lastValueRef = useRef<string>(value);
   const onChangeRef = useRef(onChange);
   const onSelectionRef = useRef(onSelection);
+  const onSubmitRef = useRef(onSubmit);
   onChangeRef.current = onChange;
   onSelectionRef.current = onSelection;
+  onSubmitRef.current = onSubmit;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -59,11 +65,13 @@ export function EdodoWriteEditor({
       onChangeRef.current?.(md);
     });
     const offSelection = editor.on("selection", (info) => onSelectionRef.current?.(info));
+    const offSubmit = editor.on("submit", () => onSubmitRef.current?.(editor));
     onReady?.(editor);
 
     return () => {
       offChange();
       offSelection();
+      offSubmit();
       editor.destroy();
       editorRef.current = null;
     };

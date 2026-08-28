@@ -67,6 +67,11 @@ export function emoji(options: EmojiOptions = {}): EdodoPlugin {
   const t = escapeRegExp(trigger);
   // Grammar: `:([a-z0-9_+-]+):` (case-insensitive; lowercased on lookup).
   const codeRe = new RegExp(`^${t}([a-z0-9_+-]+)${t}`, "i");
+  // Where the inline lexer may STOP for us: only at a `:` that begins a
+  // plausible shortcode. `src.indexOf(":")` also halted at the colon of
+  // `https:`, which cut the text token in two and hid every bare URL from
+  // marked's GFM autolinker — a codec with emoji() rendered links as text.
+  const startRe = new RegExp(`${t}[a-z0-9_+-]+${t}`, "i");
   const rendered = new WeakSet<Node>();
 
   const chipHtml = (code: string, glyph: string): string =>
@@ -284,7 +289,10 @@ export function emoji(options: EmojiOptions = {}): EdodoPlugin {
         extensions: [{
           name: "emoji",
           level: "inline",
-          start: (src: string) => src.indexOf(trigger),
+          start: (src: string) => {
+            const m = startRe.exec(src);
+            return m ? m.index : -1;
+          },
           tokenizer(src: string) {
             const m = codeRe.exec(src);
             if (!m) return undefined;

@@ -151,3 +151,40 @@ test.describe("@ mentions — a second tags() instance alongside # tags", () => 
     await expect(page.locator("a.ew-tag")).toHaveCount(2);
   });
 });
+
+test.describe("allowSpaces: mentions over multi-word names", () => {
+  async function openPeople(page: Page) {
+    await page.goto("/e2e.html?plugins=people");
+    const content = page.locator(".ew-content");
+    await content.waitFor();
+    await content.locator(":scope > *").first().click();
+  }
+
+  test('"@QA B" typed in full keeps the menu open and completes "QA Bob"', async ({ page }) => {
+    await openPeople(page);
+    await page.keyboard.type("hello @QA B");
+    await expect(menu(page)).toBeVisible();
+    await expect(menu(page).locator(".ew-menu__item")).toHaveText(["@QA Bob"]);
+    await page.keyboard.press("Enter");
+    await expect.poll(() => markdown(page)).toBe("hello [@QA Bob](https://example.com/u/bob)");
+  });
+
+  test("the menu closes on the first space after which nothing matches, and stays closed", async ({ page }) => {
+    await openPeople(page);
+    await page.keyboard.type("@Viv");
+    await expect(menu(page)).toBeVisible();
+    await page.keyboard.type(" thanks");
+    await expect(menu(page)).toHaveCount(0);
+    await page.keyboard.type(" for");
+    await expect(menu(page)).toHaveCount(0);
+    await expect.poll(() => markdown(page)).toBe("@Viv thanks for");
+  });
+
+  test("the default (no allowSpaces) still closes at the first space", async ({ page }) => {
+    await openWithTags(page);
+    await page.keyboard.type("#al");
+    await expect(menu(page)).toBeVisible();
+    await page.keyboard.type(" x");
+    await expect(menu(page)).toHaveCount(0);
+  });
+});

@@ -390,3 +390,23 @@ describe("emoji: autocomplete regressions (v0.9.0 review)", () => {
     editor.destroy();
   });
 });
+
+describe("emoji: the inline lexer keeps GFM autolinks", () => {
+  // Regression: `start: src.indexOf(":")` halted the lexer at the colon of
+  // `https:`, splitting the text token so marked's autolinker never saw the
+  // URL — every codec with emoji() rendered bare links as plain text.
+  it("a bare URL still becomes a link with the plugin present (both stored forms)", () => {
+    for (const plugin of [emoji({ map: MAP }), emoji({ map: MAP, storedForm: "unicode" })]) {
+      const html = createCodec([plugin]).parse("see https://example.com/x now :rocket:");
+      expect(html).toContain('<a href="https://example.com/x">https://example.com/x</a>');
+      expect(html).toContain("🚀");
+    }
+  });
+
+  it("a colon that is not a shortcode is left alone; a shortcode after it still renders", () => {
+    const html = createCodec([emoji({ map: MAP })]).parse("Note: ship it :tada: at 10:30");
+    expect(html).toContain("Note: ship it");
+    expect(html).toContain("🎉");
+    expect(html).toContain("10:30");
+  });
+});
